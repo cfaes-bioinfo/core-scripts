@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run QUAST to check the quality of one or more genome assemblies"
-SCRIPT_VERSION="2025-03-23"
+SCRIPT_VERSION="2026-05-21"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -22,10 +22,10 @@ TOOL_DOCS="https://github.com/ablab/quast / https://quast.sourceforge.net/docs/m
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=conda
-conda_path=/fs/ess/PAS0471/jelmer/conda/quast
+env_type=container
+conda_path=
 container_dir="$HOME/containers"
-container_url=
+container_url=oras://community.wave.seqera.io/library/quast:5.3.0--bfd4c029fde7e696
 container_path=
 
 # Defaults - tool parameters
@@ -167,7 +167,7 @@ while [ "$1" != "" ]; do
         --container_path )  shift && container_path=$1 ;;
         -h | --help )       script_help; exit 0 ;;
         -v | --version)     version_only=true ;;
-        * )                 die "Invalid option $1" "$all_opts" ;;
+        * )                 assemblies+=("$1") ;;
     esac
     shift
 done
@@ -183,9 +183,7 @@ load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$containe
 [[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
-[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
-[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
 
 # Define outputs based on script parameters
 LOG_DIR="$outdir"/logs
@@ -197,12 +195,17 @@ if [[ -n $assembly_dir ]]; then
 elif [[ -n $infile ]]; then
     assemblies=("$infile")
 elif [[ ${#assemblies[@]} -eq 0 ]]; then
-    die "Please specify input with --assembly_dir, --assembly or positional arguments"
+    die "Please specify input with --assembly_dir, --assembly, or positional arguments" "$all_opts"
 fi
 
+# Verify assembly files exist
+for asm in "${assemblies[@]}"; do
+    [[ ! -f "$asm" ]] && die "Assembly file $asm does not exist"
+done
+
 # If the input is a single file, make a separate output dir
-if [[ -n $infile ]]; then
-    sampleID=$(basename "$infile" | sed -E 's/.fn?as?t?a?//')
+if [[ ${#assemblies[@]} -eq 1 ]]; then
+    sampleID=$(basename "${assemblies[0]}" | sed -E 's/.fn?as?t?a?//')
     outdir=$outdir/"$sampleID"
 fi
 

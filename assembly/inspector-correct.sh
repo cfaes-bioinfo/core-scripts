@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run Inspector-correct to correct a genome assembly"
-SCRIPT_VERSION="2024-09-29"
+SCRIPT_VERSION="2026-05-21"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -22,56 +22,56 @@ TOOL_DOCS=https://github.com/Maggi-Chen/Inspector
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-#? Using a container, got a memory error with the Conda env
-env_type=container                       # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/inspector
-container_path=
-container_url=oras://community.wave.seqera.io/library/inspector:1.3.1--1e8dfa3d2ec456ac
-dl_container=false
+env_type=container
+conda_path=
 container_dir="$HOME/containers"
-version_only=false                 # When true, just print tool & script version info and exit
+container_url=oras://community.wave.seqera.io/library/inspector:1.3.1--68e9c83c212ac2b6
+container_path=
 
-# Defaults for tool
+# Defaults - tool parameters
 base_error=false
 
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
 script_help() {
-    echo -e "\n                          $0"
-    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
-    echo "        =============================================================="
-    echo "DESCRIPTION:"
-    echo "  $DESCRIPTION"
-    echo
-    echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage example:"
-    echo "      sbatch $0 -i results/inspector -o results/inspector/asm.fasta --datatype 'nano-corr'"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--inspector_dir  <dir>   Dir with Inspector results -- run inspector.sh before this script"
-    echo "  -o/--outfile        <dir>   Output assembly FASTA file."
-    echo "                              NOTE: Just provide the filename, no path: file will be added to Inspector dir"
-    echo "  --datatype          <str>   Input read type: pacbio-raw, pacbio-hifi, pacbio-corr, nano-raw, nano-corr [default: 'nano-raw']"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --base_error                Also correct base-errors                [default: don't correct]"
-    echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --env_type               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
-    echo "                                (NOTE: If no default '--container_url' is listed below,"
-    echo "                                 you'll have to provide one in order to run the script with a container.)"
-    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
-    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
-    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
-    echo "  -h/--help                   Print this help message and exit"
-    echo "  -v                          Print the version of this script and exit"
-    echo "  --version                   Print the version of $TOOL_NAME and exit"
-    echo
-    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
+    echo -e "
+                        $0
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL
+            =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+
+USAGE / EXAMPLE COMMANDS:
+  - Basic usage example:
+      sbatch $0 -i results/inspector -o corrected.fasta --datatype nano-corr
+
+REQUIRED OPTIONS:
+  -i/--inspector_dir  <dir>   Dir with Inspector results (run inspector.sh first)
+  -o/--outfile        <file>  Output assembly FASTA filename
+                              NOTE: File will be placed inside the Inspector dir
+  --datatype          <str>   Input read type: 'pacbio-raw' / 'pacbio-hifi' /
+                              'pacbio-corr' / 'nano-raw' / 'nano-corr'
+
+OTHER KEY OPTIONS:
+  --base_error                Also correct base-errors                [default: don't correct]
+  --more_opts         <str>   Quoted string with one or more additional options
+                              for $TOOL_NAME
+
+UTILITY OPTIONS:
+  --env_type          <str>   Whether to use a Singularity/Apptainer container  [default: $env_type]
+                              ('container') or a Conda environment ('conda')
+  --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
+  --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
+  --container_path    <file>  Local container image file ('.sif') to use        [default (if any): $container_path]
+  --conda_path        <dir>   Full path to a Conda environment to use           [default (if any): $conda_path]
+  -h/--help                   Print this help message
+  -v/--version                Print script and $TOOL_NAME versions
+
+TOOL DOCUMENTATION:
+  $TOOL_DOCS
+"
 }
 
 # Function to source the script with Bash functions
@@ -85,31 +85,37 @@ source_function_script() {
         script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
         SCRIPT_NAME=$(basename "$0")
     fi
-    function_script=$(realpath "$script_dir"/../dev/"$(basename "$FUNCTION_SCRIPT_URL")")
+    function_script_name="$(basename "$FUNCTION_SCRIPT_URL")"
+    function_script_path="$script_dir"/../dev/"$function_script_name"
+
     # Download the function script if needed, then source it
-    if [[ ! -f "$function_script" ]]; then
-        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
-        function_script=$(basename "$FUNCTION_SCRIPT_URL")
-        wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script"
+    if [[ -f "$function_script_path" ]]; then
+        source "$function_script_path"
+    else
+        if [[ ! -f "$function_script_name" ]]; then
+            echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+            wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script_name"
+        fi
+        source "$function_script_name"
     fi
-    source "$function_script"
 }
 
 # Check if this is a SLURM job, then load the Bash functions
 if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
-source_function_script
+source_function_script $IS_SLURM
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
+version_only=false
 indir=
 outfile=
-base_error_opt=
+datatype=
 more_opts=
 threads=
 
-# Parse command-line args
+# Parse command-line options
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
@@ -118,12 +124,13 @@ while [ "$1" != "" ]; do
         --datatype )            shift && datatype=$1 ;;
         --base_error )          base_error=true ;;
         --more_opts )           shift && more_opts=$1 ;;
-        --env_type )                 shift && env_type=$1 ;;
-        --dl_container )        dl_container=true ;;
+        --env_type )            shift && env_type=$1 ;;
+        --conda_path )          shift && conda_path=$1 ;;
         --container_dir )       shift && container_dir=$1 ;;
-        --container_url )       shift && container_url=$1 && dl_container=true ;;
+        --container_url )       shift && container_url=$1 ;;
+        --container_path )      shift && container_path=$1 ;;
         -h | --help )           script_help; exit 0 ;;
-        -v | --version )             version_only=true ;;
+        -v | --version )        version_only=true ;;
         * )                     die "Invalid option $1" "$all_opts" ;;
     esac
     shift
@@ -136,19 +143,23 @@ done
 set -euo pipefail
 
 # Load software
-load_env "$conda_path" "$container_path" "$dl_container"
+load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$container_url"
 [[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
 [[ -z "$indir" ]] && die "No input dir specified, do so with -i/--inspector_dir" "$all_opts"
 [[ -z "$outfile" ]] && die "No output file specified, do so with -o/--outfile" "$all_opts"
+[[ -z "$datatype" ]] && die "No datatype specified, do so with --datatype" "$all_opts"
 [[ ! -d "$indir" ]] && die "Input dir $indir does not exist"
 
 # Define outputs based on script parameters
-#outdir=$(dirname "$outfile")
 indir=$(realpath "$indir")
 outdir="$indir"
-LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+LOG_DIR="$outdir"/logs
+mkdir -p "$LOG_DIR"
+
+# Build other arguments
+base_error_opt=
 [[ "$base_error" == false ]] && base_error_opt="--skip_baseerror"
 
 # ==============================================================================
@@ -157,6 +168,8 @@ LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options passed to this script:        $all_opts"
+echo "Working directory:                        $PWD"
+echo
 echo "Input Inspector results dir:              $indir"
 echo "Output assembly file:                     $outfile"
 echo "Data type:                                $datatype"
@@ -171,7 +184,6 @@ set_threads "$IS_SLURM"
 #                               RUN
 # ==============================================================================
 # Move to the outdir or some files will go to the working dir
-log_time "Moving into the outdir..."
 cd "$outdir" || exit 1
 
 log_time "Running $TOOL_NAME..."
@@ -180,12 +192,15 @@ runstats $TOOL_BINARY \
     -o . \
     --datatype "$datatype" \
     --thread "$threads" \
-    "$base_error_opt" \
+    $base_error_opt \
     $more_opts
 
-log_time "Renaming the output file..."
+log_time "Renaming the output file:"
 mv -v contig_corrected.fa "$outfile"
 
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
 log_time "Listing files in the output dir:"
-ls -lhd $PWD/*
+ls -lhd "$PWD"/*
 final_reporting "$LOG_DIR"
