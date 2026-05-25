@@ -47,8 +47,13 @@ max_len_asv: 260
 # trunclenf: 200
 # trunclenr: 150
 
-# Whether the data comes from an Illumina Nextseq or Novaseq machine
-illumina_novaseq: true
+# Comma-separated quality bins for binned-quality data (NextSeq/NovaSeq)
+#! Note: changed from earlier option 'illumina_novaseq: true'
+# binned_quality: "2,11,25,37"
+#! Note: These bins are not universal - check your data to make sure which are present:
+# zcat your_file.fastq.gz | awk 'NR%4==0' | fold -w1 | sort -u
+
+
 
 # ==============================================================================
 #                         16S vs ITS SETTINGS
