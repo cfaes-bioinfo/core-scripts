@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=120:00:00
-#SBATCH --partition=largemem
 #SBATCH --cpus-per-task=20
-#SBATCH --mem=740G
+#SBATCH --mem=1500G
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=tgs_gapcloser
 #SBATCH --output=slurm-tgs_gapcloser-%j.out
