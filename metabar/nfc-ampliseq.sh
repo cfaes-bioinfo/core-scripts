@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=24:00:00
+#SBATCH --time=72:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=nfc_ampliseq
@@ -11,7 +11,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run the Nextflow-core metabarcoding pipeline from https://nf-co.re/ampliseq"
-SCRIPT_VERSION="2026-03-16"
+SCRIPT_VERSION="2026-05-23"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY="nextflow run"
@@ -29,7 +29,7 @@ osc_account=PAS0471                                         # If the script is s
 [[ -n $SLURM_JOB_ACCOUNT ]] && osc_account=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
 
 # Parameter defaults - workflow
-workflow_version=2.16.1                                     # The version of the nf-core workflow
+workflow_version=2.17.0                                     # The version of the nf-core workflow
 work_dir=/fs/scratch/"$osc_account"/$USER/nfc-ampliseq      # 'work dir' for initial outputs (selected, final outputs go to the outdir)
 profile="singularity"
 resume=true && resume_opt="-resume"
