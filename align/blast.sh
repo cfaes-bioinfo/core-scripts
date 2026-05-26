@@ -49,7 +49,7 @@ OUTPUT:
     18) staxids     Subject taxonomy IDs
     19) tax_string  Taxonomy string in the format: kingdom|phylum|class|order|family|genus|species
 "
-SCRIPT_VERSION="2025-12-11"
+SCRIPT_VERSION="2026-05-26"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 VERSION_COMMAND="blastn -version; datasets --version; taxonkit version"
@@ -65,8 +65,8 @@ BLAST_FORMAT="6 qseqid sacc pident length evalue bitscore qlen slen qstart qend 
 
 # Defaults - generic
 env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/conda/blast-2.16.0
-container_path=
+conda_path=/fs/ess/PAS0471/conda/blast-2.17.0 # Should also contain taxonkit and ncbi-datasets
+container_path=oras://community.wave.seqera.io/library/blast:2.17.0--3d1eb1104ccfd59c
 container_url=
 container_dir="$HOME/containers"
 
@@ -154,6 +154,8 @@ GENERAL OPTIONS (OPTIONAL):
   --no_header               Don't add headers to final BLAST output file      [default: add]
   --resume                  Don't run BLAST if the output file already exists;
                               only rerun downstream operations like filtering.
+    --more_opts       <str>   Quoted string with one or more additional options
+                                                            for the BLAST command
 
 BLAST THRESHOLD AND FILTERING OPTIONS (OPTIONAL):
   --tax_ids         <str>   Comma-separated list of NCBI taxon IDs              [default: use full database]
@@ -240,6 +242,7 @@ run_blast() {
         -out "$blast_out_raw" \
         -outfmt "$BLAST_FORMAT" \
         -evalue "$evalue" \
+    $more_opts \
         ${maxtarget_opt}${task_opt}${remote_opt}${thread_opt}${tax_opt}${spacer}"${tax_optarg}"
 }
 
@@ -526,6 +529,7 @@ tax_ids= && tax_opt= && tax_optarg=
 max_target_seqs= && maxtarget_opt=
 spacer=
 threads= && thread_opt=
+more_opts=
 version_only=false # When true, just print tool & script version info and exit
 
 # Parse command-line args
@@ -536,6 +540,7 @@ while [ "$1" != "" ]; do
         -o | --outdir )     shift && outdir=$1 ;;
         --resume )          force=false ;;
         --no_header )       add_header=false ;;
+        --more_opts )       shift && more_opts=$1 ;;
         --max_target_seqs ) shift && max_target_seqs=$1 ;;
         --tax_ids )         shift && tax_ids=$1 ;;
         --blast_type )      shift && blast_type=$1 ;;
@@ -674,6 +679,7 @@ echo "Run BLAST locally?                        $local"
 [[ -n "$remote_db" ]] && echo "Remote BLAST db:                          $remote_db"
 [[ -n "$local_db" ]] && echo "Local BLAST db:                           $local_db"
 [[ -n "$subject_fasta" ]] && echo "Local BLAST subject FASTA file:           $subject_fasta"
+[[ -n "$more_opts" ]] && echo "Additional BLAST options:                 $more_opts"
 echo
 echo "Force BLAST run even if output exists?    $force"
 echo "Add column header to BLAST output?        $add_header"
@@ -702,7 +708,7 @@ echo "Listing the input file(s):"
 ls -lh "$infile"
 if [[ -n "$local_db" ]]; then
     echo -e "\nRunning with the following local BLAST database:"
-    ls -lh "$local_db"*
+    ls -lh "$local_db"* | sed -n '1,10p'
 fi
 if [[ -n "$subject_fasta" ]]; then
     echo -e "\nRunning BLAST with the following local subject FASTA file:"
