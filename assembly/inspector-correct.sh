@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run Inspector-correct to correct a genome assembly"
-SCRIPT_VERSION="2026-05-21"
+SCRIPT_VERSION="2026-05-24"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -22,8 +22,9 @@ TOOL_DOCS=https://github.com/Maggi-Chen/Inspector
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=container
-conda_path=
+#! NOTE: Had updated to container v1.3.1 but the inspector-correct script does not work there somehow
+env_type=conda
+conda_path=/fs/ess/PAS2380/assembly/jelmer/software/envs/inspector-1.0.2
 container_dir="$HOME/containers"
 container_url=oras://community.wave.seqera.io/library/inspector:1.3.1--68e9c83c212ac2b6
 container_path=
@@ -49,13 +50,13 @@ USAGE / EXAMPLE COMMANDS:
 
 REQUIRED OPTIONS:
   -i/--inspector_dir  <dir>   Dir with Inspector results (run inspector.sh first)
-  -o/--outfile        <file>  Output assembly FASTA filename
-                              NOTE: File will be placed inside the Inspector dir
+    -o/--outfile        <file>  Output assembly FASTA file path
+                                                            (absolute path or path relative to current working dir)
   --datatype          <str>   Input read type: 'pacbio-raw' / 'pacbio-hifi' /
                               'pacbio-corr' / 'nano-raw' / 'nano-corr'
 
 OTHER KEY OPTIONS:
-  --base_error                Also correct base-errors                [default: don't correct]
+  --base_error                Also correct base-errors                          [default: don't correct]
   --more_opts         <str>   Quoted string with one or more additional options
                               for $TOOL_NAME
 
@@ -114,6 +115,7 @@ outfile=
 datatype=
 more_opts=
 threads=
+base_error_opt=
 
 # Parse command-line options
 all_opts="$*"
@@ -154,12 +156,15 @@ load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$containe
 
 # Define outputs based on script parameters
 indir=$(realpath "$indir")
-outdir="$indir"
-LOG_DIR="$outdir"/logs
-mkdir -p "$LOG_DIR"
+# Interpret --outfile as a full file path (absolute, or relative to current working dir)
+outfile=$(realpath -m "$outfile")
+outdir=$(dirname "$outfile")
+outfile_name=$(basename "$outfile")
+
+mkdir -p "$outdir"
+LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 
 # Build other arguments
-base_error_opt=
 [[ "$base_error" == false ]] && base_error_opt="--skip_baseerror"
 
 # ==============================================================================
@@ -171,6 +176,7 @@ echo "All options passed to this script:        $all_opts"
 echo "Working directory:                        $PWD"
 echo
 echo "Input Inspector results dir:              $indir"
+echo "Output directory:                         $outdir"
 echo "Output assembly file:                     $outfile"
 echo "Data type:                                $datatype"
 echo "Correct base-errors, too:                 $base_error"
@@ -188,7 +194,7 @@ cd "$outdir" || exit 1
 
 log_time "Running $TOOL_NAME..."
 runstats $TOOL_BINARY \
-    --inspector . \
+    --inspector "$indir" \
     -o . \
     --datatype "$datatype" \
     --thread "$threads" \
@@ -196,7 +202,7 @@ runstats $TOOL_BINARY \
     $more_opts
 
 log_time "Renaming the output file:"
-mv -v contig_corrected.fa "$outfile"
+mv -v contig_corrected.fa "$outfile_name"
 
 # ==============================================================================
 #                               WRAP-UP

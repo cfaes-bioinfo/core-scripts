@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run Inspector to check the quality of a genome assembly"
-SCRIPT_VERSION="2026-05-21"
+SCRIPT_VERSION="2026-05-24"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -22,8 +22,9 @@ TOOL_DOCS="https://github.com/ChongLab/Inspector / https://github.com/Maggi-Chen
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=container
-conda_path=
+#! NOTE: Had updated to container v1.3.1 but the inspector-correct script does not work there somehow
+env_type=conda
+conda_path=/fs/ess/PAS2380/assembly/jelmer/software/envs/inspector-1.0.2
 container_dir="$HOME/containers"
 container_url=oras://community.wave.seqera.io/library/inspector:1.3.1--68e9c83c212ac2b6
 container_path=

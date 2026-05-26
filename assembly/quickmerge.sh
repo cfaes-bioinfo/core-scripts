@@ -12,14 +12,14 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Merge long-read assemblies with Quickmerge"
-SCRIPT_VERSION="2026-05-21"
+SCRIPT_VERSION="2026-05-23"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 TOOL_BINARY=merge_wrapper.py
 TOOL_NAME=Quickmerge
 TOOL_DOCS="https://github.com/mahulchak/quickmerge / https://github.com/mahulchak/quickmerge/wiki"
-VERSION_COMMAND="$TOOL_BINARY --version"
+VERSION_COMMAND= # No version command
 
 # Defaults - generics
 env_type=container
