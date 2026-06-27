@@ -3,7 +3,7 @@
 #SBATCH --time=1:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-type=FAIL
 #SBATCH --job-name=bowtie1_index
 #SBATCH --output=slurm-bowtie1_index-%j.out
 
