@@ -20,7 +20,7 @@ The resulting filtered VCF is then used to generate the consensus sequence(s) wi
 Genotypes that were set to missing in the first step will be set to N in the consensus sequence.
 Heterozygous sites will be represented with IUPAC codes.
 "
-SCRIPT_VERSION="2026-03-23"
+SCRIPT_VERSION="2026-05-11"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -31,7 +31,7 @@ VERSION_COMMAND="$TOOL_BINARY bcftools --version; $TOOL_BINARY samtools --versio
 
 # Defaults - generics
 env_type=conda                                 # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/bcftools  # Must also contain samtools and betools
+conda_path=/fs/ess/PAS0471/jelmer/conda/bcftools  # Must also contain samtools, bedtools, and seqkit
 container_url=
 container_dir="$HOME/containers"
 container_path=
@@ -180,10 +180,11 @@ indir=$(dirname "$vcf")
 
 # Define outputs based on script parameters
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
-vcf_out="$outdir"/"$sample_id".vcf.gz
-fasta="$outdir"/"$sample_id".fasta
-regions_file="$outdir"/"$sample_id"_regions.txt
-region_counts_file="$outdir"/"${sample_id}"_snp-counts-per-region.tsv
+mkdir -p "$outdir"/fa "$outdir"/vcf "$outdir"/stats
+vcf_out="$outdir"/vcf/"$sample_id".vcf.gz
+fasta="$outdir"/fa/"$sample_id".fasta
+region_counts_file="$outdir"/stats/"${sample_id}"_snp-counts-per-region.tsv
+regions_file="$outdir"/stats/"$sample_id"_regions.txt
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -263,15 +264,51 @@ ls -lh "$regions_file"
 log_time "Generating consensus sequences per locus..."
 runstats $TOOL_BINARY samtools faidx -r "$regions_file" "$ref_fa" |
     runstats $TOOL_BINARY bcftools consensus \
-        --haplotype I --missing N "$vcf_out" > "$outdir"/"${sample_id}".fa
-echo "# Resulting file:"
-ls -lh "$outdir"/"${sample_id}".fa
+        --haplotype I --missing N "$vcf_out" \
+        > "$outdir"/fa/"${sample_id}"_init.fa
 
 #! Note: when bcftools reports 'Applied X variants', this includes the counts of
 #! missing genotypes (set to 'N'), so it will be higher than the variant count above.
-
 #? --missing 'N' => set missing genotypes to 'N' in the consensus sequence
 #? --haplotype I => for heterozygous sites, use IUPAC codes
+
+# Rename the FASTA entries from region to locus ID
+# NOTE: When multiple jobs write to the same output dir, use atomic file creation
+# to avoid race condition. Write to temp file first, then move it (atomic operation).
+lookup_file="$outdir"/stats/lookup.tsv
+lookup_tmp="$lookup_file".tmp.$$
+
+# Create lookup file atomically (only if it doesn't exist yet)
+if [[ ! -f "$lookup_file" ]]; then
+    awk -v OFS="\t" '{print $1":"$2+1"-"$3, $4}' "$bed" > "$lookup_tmp"
+    # Atomic move - only succeeds if file doesn't exist yet
+    mv "$lookup_tmp" "$lookup_file" 2>/dev/null || true
+    # If move failed (another job won the race), wait for that job's file to be ready
+    while [[ ! -f "$lookup_file" ]] || [[ ! -s "$lookup_file" ]]; do
+        sleep 0.1
+    done
+else
+    # File exists, wait for it to be fully written (has content)
+    while [[ ! -s "$lookup_file" ]]; do
+        sleep 0.1
+    done
+fi
+
+# Clean up temp file if it still exists
+rm -f "$lookup_tmp" 2>/dev/null || true
+
+seqkit replace \
+    -p '^(\S+)(.*)$' \
+    -r '{kv} $1' \
+    -k "$lookup_file" \
+    "$outdir"/fa/"${sample_id}"_init.fa > "$fasta"
+
+rm "$outdir"/fa/"${sample_id}"_init.fa
+
+echo -e "\n# Resulting FASTA file:"
+ls -lh "$fasta"
+echo -e "\n# First couple of headers of the FASTA file:"
+grep -m5 ">" "$fasta"
 
 # ==============================================================================
 #                               WRAP-UP
@@ -279,33 +316,3 @@ ls -lh "$outdir"/"${sample_id}".fa
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
 final_reporting "$LOG_DIR"
-
-
-# ==============================================================================
-#                               OLD
-# ==============================================================================
-# Multi-sample VCF workflow
-# mapfile -t samples < <($TOOL_BINARY bcftools query -l "$vcf_out") # List of samples from VCF
-# for sample in "${samples[@]}"; do
-#     log_time "  Processing $sample..."
-#     # 1. samtools faidx grabs the reference sequence just for the focal loci
-#     # 2. bcftools consensus reads the >chr:start-end header, maps it to the VCF, and applies the variants/Ns
-#     $TOOL_BINARY samtools faidx -r "$regions_file" "$ref_fa" |
-#         runstats $TOOL_BINARY bcftools consensus \
-#             -s "$sample" \
-#             --haplotype I \
-#             --missing N \
-#             "$vcf_out" \
-#             > "$outdir"/"${sample}".fa
-#     echo "# Resulting file:"
-#     ls -lh "$outdir"/"${sample}".fa
-# done
-
-# Get basename of $vcf whether it ends with .vcf or .vcf.gz
-# if [[ "$vcf" == *.vcf.gz ]]; then
-#     file_id=$(basename "$vcf" .vcf.gz)
-# elif [[ "$vcf" == *.vcf ]]; then
-#     file_id=$(basename "$vcf" .vcf)
-# else
-#     die "Input file must end with .vcf or .vcf.gz" "$all_opts"
-# fi

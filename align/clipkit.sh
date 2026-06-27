@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Trim an MSA (Multiple Sequence Alignment) prior to building a tree with ClipKIT"
-SCRIPT_VERSION="2025-01-04"
+SCRIPT_VERSION="2026-05-02"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -22,12 +22,11 @@ TOOL_DOCS=https://jlsteenwyk.com/ClipKIT/
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=container                      # Use a 'conda' env or a Singularity 'container'
+env_type=container                  # Use a 'conda' env or a Singularity 'container'
 conda_path=/fs/ess/PAS0471/jelmer/conda/clipkit
-container_path=/fs/ess/PAS0471/containers/clipkit_2.3.0--696fa0f33ad2b776.sif
-container_url=oras://community.wave.seqera.io/library/clipkit:2.3.0--696fa0f33ad2b776
+container_path=
+container_url=oras://community.wave.seqera.io/library/clipkit:2.12.0--6c4f463b303b6155
 container_dir="$HOME/containers"
-version_only=false                 # When true, just print tool & script version info and exit
 
 # Defaults - tool parameters
 mode=smart-gap
@@ -36,40 +35,43 @@ mode=smart-gap
 #                                   FUNCTIONS
 # ==============================================================================
 script_help() {
-    echo -e "\n                          $0"
-    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
-    echo "        =============================================================="
-    echo "DESCRIPTION:"
-    echo "  $DESCRIPTION"
-    echo
-    echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage example:"
-    echo "      sbatch $0 -i results/my_alignment.fa -o results/clipkit"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile         <file>  Input file with a nucleotide or protein Multiple Sequence Alignment"
-    echo "                                Supported formats: fasta, clustal, maf, mauve, phylip, phylip-sequential,"
-    echo "                                phylip-relaxed, and stockholm"
-    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
-    echo "                              The output file will have the same name as the input file"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --mode              <str>   ClipKIT running mode / algorithm        [default: $mode]"
-    echo "                                The default is also the ClipKIT default"
-    echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --env_type               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
-    echo "                                (NOTE: If no default '--container_url' is listed below,"
-    echo "                                 you'll have to provide one in order to run the script with a container.)"
-    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
-    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  -h/--help                   Print this help message and exit"
-    echo "  -v                          Print the version of this script and exit"
-    echo "  --version                   Print the version of $TOOL_NAME and exit"
-    echo
-    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
+    echo -e "
+                        $0
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL
+            =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+    
+USAGE / EXAMPLE COMMANDS:
+  - Basic usage example:
+      sbatch $0 -i results/my_alignment.fa -o results/clipkit/trimmed.fa
+    
+REQUIRED OPTIONS:
+  -i/--infile         <file>  Input file with a nucleotide or protein Multiple Sequence Alignment
+                                Supported formats: fasta, clustal, maf, mauve, phylip, phylip-sequential,
+                                phylip-relaxed, and stockholm
+  -o/--outfile        <file>  Output FASTA file (dir will be created if needed)
+    
+OTHER KEY OPTIONS:
+  --mode              <str>   ClipKIT running mode / algorithm                  [default: $mode]
+                                The default is also the ClipKIT default
+  --more_opts         <str>   Quoted string with one or more additional options
+                                for $TOOL_NAME
+    
+UTILITY OPTIONS:
+  --env_type          <str>   Whether to use a Singularity/Apptainer container  [default: $env_type]
+                              ('container') or a Conda environment ('conda')
+  --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
+  --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
+  --container_path    <file>  Local container image file ('.sif') to use        [default (if any): $container_path]
+  --conda_path        <dir>   Full path to a Conda environment to use           [default (if any): $conda_path]
+  -h/--help                   Print this help message
+  -v/--version                Print script and $TOOL_NAME versions
+    
+TOOL DOCUMENTATION:
+  $TOOL_DOCS
+"
 }
 
 # Function to source the script with Bash functions
@@ -89,40 +91,44 @@ source_function_script() {
     # Download the function script if needed, then source it
     if [[ -f "$function_script" ]]; then
         source "$function_script"
-    elif [[ ! -f "$function_script_name" ]]; then
-        echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
-        wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script_name"
-        source "$function_script_name"
     else
+        if [[ ! -f "$function_script_name" ]]; then
+            echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+            wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script_name"
+        fi
         source "$function_script_name"
     fi
 }
 
 # Check if this is a SLURM job, then load the Bash functions
 if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
-source_function_script
+source_function_script $IS_SLURM
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
+version_only=false  # When true, just print tool & script version info and exit
 infile=
-outdir=
+outfile=
 more_opts=
 threads=
 
-# Parse command-line args
+# Parse command-line options
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
+        -o | --outfile )    shift && outfile=$1 ;;
+        --mode )            shift && mode=$1 ;;
         --more_opts )       shift && more_opts=$1 ;;
-        --env_type )             shift && env_type=$1 ;;
+        --env_type )        shift && env_type=$1 ;;
+        --conda_path )      shift && conda_path=$1 ;;
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 ;;
+        --container_path )  shift && container_path=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v | --version )         version_only=true ;;
+        -v | --version)     version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
@@ -135,18 +141,17 @@ done
 set -euo pipefail
 
 # Load software
-load_env "$conda_path" "$container_path"
+load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$container_url"
 [[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
 [[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
-[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
+[[ -z "$outfile" ]] && die "No output file specified, do so with -o/--outfile" "$all_opts"
 [[ ! -f "$infile" ]] && die "Input file $infile does not exist"
-[[ $(dirname "$infile") == "$outdir" ]] && die "Input dir and output dir cannot be the same ($outdir)"
 
 # Define outputs based on script parameters
+outdir=$(dirname "$outfile")
 LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
-outfile="$outdir"/$(basename "$infile")
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -154,8 +159,12 @@ outfile="$outdir"/$(basename "$infile")
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options passed to this script:        $all_opts"
+echo "Working directory:                        $PWD"
+echo
 echo "Input file:                               $infile"
 echo "Output file:                              $outfile"
+echo "Output dir:                               $outdir"
+echo "ClipKIT mode:                             $mode"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
 ls -lh "$infile"
@@ -176,5 +185,5 @@ runstats $TOOL_BINARY \
 #                               WRAP-UP
 # ==============================================================================
 log_time "Listing files in the output dir:"
-ls -lhd "$(realpath "$outdir")"/*
+ls -lh "$outfile"
 final_reporting "$LOG_DIR"

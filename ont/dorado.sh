@@ -12,8 +12,8 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Basecall ONT data with Dorado using GPUs"
-SCRIPT_VERSION="2026-02-07"
+DESCRIPTION="Basecall ONT reads (FAST5 or POD5) with Dorado using GPUs and output FASTQ or BAM files"
+SCRIPT_VERSION="2026-04-16"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -28,10 +28,10 @@ env_type=NA                        # No conda or container, Dorado is run from a
                                    # Including this so the `final_reporting` function does not error out
 
 # Defaults - tool parameters
-model=hac                          # {fast,hac,sup}@v{version}
-out_format=fastq                   # 'fastq' or 'bam'
-out_format_opt="--emit-fastq"      # This will be updated automatically based on out_format    
-trim=all                           # Same as Dorado default, options: 'adapters', 'none', 'all'
+model=sup                          # Basecalling model: fast, hac, or sup -- can be fast@<version> to specify kit
+out_format=fastq                   # Output file format: 'fastq' or 'bam'
+trim=all                           # What to trim from the reads. This is also the Dorado default. Options: 'adapters', 'none', 'all'
+out_format_opt="--emit-fastq"      # (This option will be updated automatically based on out_format)
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -50,12 +50,17 @@ USAGE / EXAMPLE COMMANDS:
       sbatch $0 -i data/pod5 -o results/dorado
     
 REQUIRED OPTIONS:
--i/--input          <file>  Input file or dir; files should be in FAST5 or POD5 format.
-                            When using FAST5, the base-calling model must be a specific one.
+-i/--input          <file>  Input file or dir;
+                            files should be in FAST5 or POD5 format.
+                            When using FAST5, the base-calling model
+                            (--model) must include the kit.
 -o/--outdir         <dir>   Output dir (will be created if needed)
-                            Both in case of a single or multiple input files, the output will be a single file:
-                              - In case of a single input file, the output file will have the same name as the input file
-                              - In case of a multiple input files, the output file will have the same name as the input dir
+                            Regardless of the number of input files,
+                            the output will be a single file:
+                            - In case of a single input file, the output file
+                              will have the same name as the input file
+                            - In case of multiple input files, the output file
+                              will have the same name as the input dir
 
 OTHER KEY OPTIONS:
 --model             <str>   Basecall model                                      [default: $model]
@@ -64,12 +69,12 @@ OTHER KEY OPTIONS:
 --out_format        <str>   Output file format, 'bam' or 'fastq'                [default: $out_format]
 
 OTHER KEY OPTIONS:
-  --more_opts         <str>   Quoted string with one or more additional options
-                              for $TOOL_NAME
+  --more_opts       <str>   Quoted string with one or more additional options
+                            for $TOOL_NAME
     
 UTILITY OPTIONS:
-  -h/--help                   Print this help message
-  -v/--version                Print script and $TOOL_NAME versions
+  -h/--help                 Print this help message
+  -v/--version              Print script and $TOOL_NAME versions
     
 TOOL DOCUMENTATION:
   $TOOL_DOCS

@@ -1,32 +1,35 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=24:00:00
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=64G
+#SBATCH --time=12:00:00
+#SBATCH --cpus-per-task=20
+#SBATCH --mem=80G
 #SBATCH --mail-type=END,FAIL
-#SBATCH --job-name=repeatmasker
-#SBATCH --output=slurm-repeatmasker-%j.out
+#SBATCH --job-name=ragtag_correct
+#SBATCH --output=slurm-ragtag_correct-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Run RepeatMasker on a genome assembly to identify and mask repetitive elements."
-SCRIPT_VERSION="2026-05-13"
+DESCRIPTION="Run RagTag correct for reference-guided assembly correction"
+SCRIPT_VERSION="2026-05-21"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
-TOOL_BINARY=RepeatMasker
-TOOL_NAME=RepeatMasker
-TOOL_DOCS=https://www.repeatmasker.org/
+TOOL_BINARY=ragtag.py
+TOOL_NAME=RagTag
+TOOL_DOCS="https://github.com/malonge/RagTag/wiki/correct"
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
 env_type=container
 conda_path=
-container_url=oras://community.wave.seqera.io/library/repeatmasker:4.2.3--bf81e1c6f13e0d00
 container_dir="$HOME/containers"
+container_url=oras://community.wave.seqera.io/library/ragtag:2.1.0--168654ba14c4be00
 container_path=
+
+# Defaults - tool parameters
+read_type=ont
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -39,35 +42,32 @@ script_help() {
 
 DESCRIPTION:
 $DESCRIPTION
-    
-USAGE / EXAMPLE COMMANDS:
-  - Basic usage example:
-      sbatch $0 -i results/genome.fa -o results/repeatmasker --genome_lib results/repeatmodeler/GCA_009761285.1-families.fa
-    
-REQUIRED OPTIONS:
-  -i/--infile         <file>  Input FASTA file (genome assembly)
-  -o/--outdir         <dir>   Output dir (will be created if needed)
 
-ONE OF THESE TWO OPTIONS IS REQUIRED (THEY ARE MUTUALLY EXCLUSIVE):
-  --genome_lib        <file>  Genome repeat library FASTA file produced by RepeatModeler (repeatmodeler.sh script)
-  --species           <str>   Species or taxonomic group name
-                              To check which species/groups are available, run, e.g:
-                              /fs/ess/PAS0471/jelmer/conda/repeatmasker/share/RepeatMasker/famdb.py names 'oomycetes'
-    
+USAGE / EXAMPLE COMMANDS:
+  - Basic usage:
+      sbatch $0 --assembly results/assembly.fasta --reference ref.fasta --reads reads.fastq.gz -o results/ragtag/corrected.fasta
+
+REQUIRED OPTIONS:
+  --assembly        <file>  Input assembly FASTA file
+  --reference       <file>  Input reference genome FASTA file
+  --reads           <file>  Input FASTQ file with long reads
+  -o/--outfile      <file>  Output assembly FASTA file (dir will be created if needed)
+
 OTHER KEY OPTIONS:
-  --more_opts         <str>   Quoted string with one or more additional options
-                              for $TOOL_NAME
-    
+  --read_type       <str>   Read type: 'ont' / 'corr' / 'hifi'           [default: $read_type]
+  --more_opts       <str>   Quoted string with one or more additional options
+                            for $TOOL_NAME
+
 UTILITY OPTIONS:
-  --env_type          <str>   Use a Singularity container ('container')         [default: $env_type]
-                              or a Conda environment ('conda') 
-  --conda_path        <dir>   Full path to a Conda environment to use           [default: $conda_path]
-  --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
-  --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
-  --container_path    <file>  Local singularity image file (.sif) to use        [default (if any): $container_path]
-  -h/--help                   Print this help message
-  -v/--version                Print script and $TOOL_NAME versions
-    
+  --env_type        <str>   Whether to use a Singularity/Apptainer container  [default: $env_type]
+                            ('container') or a Conda environment ('conda')
+  --container_url   <str>   URL to download a container from                  [default (if any): $container_url]
+  --container_dir   <str>   Dir to download a container to                    [default: $container_dir]
+  --container_path  <file>  Local container image file ('.sif') to use        [default (if any): $container_path]
+  --conda_path      <dir>   Full path to a Conda environment to use           [default (if any): $conda_path]
+  -h/--help                 Print this help message
+  -v/--version              Print script and $TOOL_NAME versions
+
 TOOL DOCUMENTATION:
   $TOOL_DOCS
 "
@@ -107,11 +107,11 @@ source_function_script $IS_SLURM
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
-version_only=false  # When true, just print tool & script version info and exit
-infile=
-outdir=
-genome_lib=
-species= && species_opt=
+version_only=false
+assembly=
+reference=
+reads=
+outfile=
 more_opts=
 threads=
 
@@ -119,10 +119,11 @@ threads=
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
-        -i | --infile )     shift && infile=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
-        --genome_lib )      shift && genome_lib=$1 ;;
-        --species )         shift && species=$1 ;;
+        --assembly )        shift && assembly=$1 ;;
+        --reference )       shift && reference=$1 ;;
+        --reads )           shift && reads=$1 ;;
+        -o | --outfile )    shift && outfile=$1 ;;
+        --read_type )       shift && read_type=$1 ;;
         --more_opts )       shift && more_opts=$1 ;;
         --env_type )        shift && env_type=$1 ;;
         --conda_path )      shift && conda_path=$1 ;;
@@ -130,7 +131,7 @@ while [ "$1" != "" ]; do
         --container_url )   shift && container_url=$1 ;;
         --container_path )  shift && container_path=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v | --version)     version_only=true ;;
+        -v | --version )    version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
@@ -147,24 +148,21 @@ load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$containe
 [[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
-[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
-[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
-[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
-[[ -z "$species" ]] && [[ -z "$genome_lib" ]] && die "No --species or --genome_lib specified, one of these is required" "$all_opts"
-[[ -n "$species" ]] && [[ -n "$genome_lib" ]] && die "Both --species and --genome_lib are specified, but you can only use one of these options" "$all_opts"
-[[ -n "$genome_lib" && ! -f "$genome_lib" ]] && die "Input file $genome_lib does not exist"
-
-# Make file paths absolute
-infile=$(realpath "$infile")
-genome_lib=$(realpath "$genome_lib")
-[[ ! "$outdir" =~ ^/ ]] && outdir="$PWD"/"$outdir"
+[[ -z "$assembly" ]] && die "No assembly specified, do so with --assembly" "$all_opts"
+[[ -z "$reference" ]] && die "No reference specified, do so with --reference" "$all_opts"
+[[ -z "$reads" ]] && die "No reads file specified, do so with --reads" "$all_opts"
+[[ -z "$outfile" ]] && die "No output file specified, do so with -o/--outfile" "$all_opts"
+[[ ! -f "$assembly" ]] && die "Input assembly file $assembly does not exist"
+[[ ! -f "$reference" ]] && die "Input reference file $reference does not exist"
+[[ ! -f "$reads" ]] && die "Input reads file $reads does not exist"
 
 # Define outputs based on script parameters
-LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+outdir=$(dirname "$outfile")
+LOG_DIR="$outdir"/logs
+mkdir -p "$LOG_DIR"
 
-# Species/genome lib args
-[[ -n "$species" ]] && species_opt="-species $species"
-[[ -n "$genome_lib" ]] && genome_lib_opt="-lib $genome_lib"
+# Build reads argument
+reads_arg="-R $reads -T $read_type"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -174,50 +172,36 @@ echo "==========================================================================
 echo "All options passed to this script:        $all_opts"
 echo "Working directory:                        $PWD"
 echo
-echo "Input file:                               $infile"
-echo "Output dir:                               $outdir"
-[[ -n $genome_lib ]] && echo "Genome database from RepeatModeler:       $genome_lib"
-[[ -n $species ]] && echo "Species name:                             $species"
+echo "Input assembly FASTA:                     $assembly"
+echo "Input reference FASTA:                    $reference"
+echo "Input reads FASTQ:                        $reads"
+echo "Read type:                                $read_type"
+echo "Output file:                              $outfile"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
-ls -lh "$infile"
-[[ -n $genome_lib ]] && ls -lh "$genome_lib"
+ls -lh "$assembly" "$reference" "$reads"
 set_threads "$IS_SLURM"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Move into the output dir
-cd "$outdir" || die "Can't change to output dir $outdir"
-
-# Run
-log_time "Running $TOOL_NAME..."
-runstats $TOOL_BINARY \
-    -pa $(( "$threads" / 4 )) \
-    -dir . \
-    -gff \
-    -html \
-    $genome_lib_opt \
-    $species_opt \
+log_time "Running $TOOL_NAME correct..."
+runstats $TOOL_BINARY correct \
+    -o "$outdir" \
+    $reads_arg \
+    -u \
+    -t "$threads" \
     $more_opts \
-    "$infile"
+    "$reference" \
+    "$assembly"
 
-#? -s  Slow search; 0-5% more sensitive, 2-3 times slower than default
-#? -q  Quick search; 5-10% less sensitive, 2-5 times faster than default
-#? -qq Rush job; about 10% less sensitive, 4->10 times faster than default
-#?        (quick searches are fine under most circumstances) repeat options
-
-#? To check available species, e.g:
-# /fs/project/PAS0471/jelmer/conda/repeatmasker-4.1.2.p1/share/RepeatMasker/famdb.py names 'oomycetes'
-# /fs/project/PAS0471/jelmer/conda/repeatmasker-4.1.2.p1/share/RepeatMasker/famdb.py names 'stramenopiles'
-# /fs/project/PAS0471/jelmer/conda/repeatmasker-4.1.2.p1/share/RepeatMasker/famdb.py names 'phytophthora'
-
-#? Download parts of the Dfam database: https://www.dfam.org/releases/current/families/FamDB/
+log_time "Renaming the output file:"
+mv -v "$outdir"/ragtag.correct.fasta "$outfile"
 
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
-log_time "Listing files in the output dir:"
-ls -lh
+log_time "Listing the output file:"
+ls -lh "$outfile"
 final_reporting "$LOG_DIR"

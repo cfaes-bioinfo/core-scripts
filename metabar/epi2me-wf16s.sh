@@ -11,8 +11,8 @@
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Run the ONT-EPI2ME wf-16s pipeline to classify 16S rRNA gene sequences from ONT"
-SCRIPT_VERSION="2026-01-19"
+DESCRIPTION="Run the ONT-EPI2ME wf-16s pipeline to classify 16S or ITS rRNA gene sequences from ONT"
+SCRIPT_VERSION="2026-05-02"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -30,13 +30,14 @@ conda_path=/fs/ess/PAS0471/conda/nextflow-25.10.2
 osc_account=PAS0471                                         # If the script is submitted with another project, this will be updated (line below)
 [[ -n $SLURM_JOB_ACCOUNT ]] && osc_account=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
 
-# Defaults - Nextflow parameters
+# Defaults - general Nextflow parameters
 work_dir=/fs/scratch/"$osc_account"/$USER/epi2me-wf16s      # 'work dir' for initial outputs (selected, final outputs go to the outdir)
 profile="singularity"
 resume=true && resume_opt="-resume"
 container_dir="$work_dir"/containers                        # The workflow will download containers to this dir
 
-# Defaults - tool parameters
+# Defaults - workflow parameters
+workflow_version="v1.6.1"  # Default version
 classifier=minimap2                                         # Same as workflow default
 database=ncbi_16s_18s                                       # Same as workflow default
 restructure_indir=false
@@ -75,6 +76,10 @@ OTHER KEY OPTIONS:
                               This is necessary if the dir contains files for
                               multiple different samples.                       [default: false]
                               See <https://github.com/epi2me-labs/wf-16s?tab=readme-ov-file#input-example>
+                              For this to work, files must have extension
+                              '.fastq.gz' and the rest of the file name
+                              will be used as sample name.
+  --version_workflow  <str>   Workflow version/revision to use                  [default: $workflow_version]
 
 GENERAL NEXTFLOW OPTIONS:
   --restart                   Don't attempt to resume workflow: start over      [default: resume workflow]
@@ -162,6 +167,7 @@ while [ "$1" != "" ]; do
         --classifier )                  shift && classifier=$1 ;;
         --database )                    shift && database=$1 ;;
         --restructure_indir )           restructure_indir=true ;;
+        --version_workflow )            shift && workflow_version=$1 ;;
         -p | --params_file )            shift && params_file=$1 ;;
         --container_dir )               shift && container_dir=$1 ;;
         --config | -config )            shift && config_file=$1 ;;
@@ -211,7 +217,8 @@ echo "==========================================================================
 echo "All arguments to this script:             $all_opts"
 echo
 echo "INPUT AND OUTPUT:"
-echo "Input option:                             $input_opt"
+[[ -n "$infile" ]] && echo "Input file:                               $infile"
+[[ -n "$indir" ]] && echo "Input dir:                                $indir"
 echo "Output dir:                               $outdir"
 echo "Classifier:                               $classifier"
 echo "Database:                                 $database"
@@ -245,16 +252,18 @@ mkdir -pv "$work_dir" "$container_dir" "$outdir"/logs
 
 # Build the input option
 [[ -n "$infile" ]] && input_opt="--fastq $infile"
+
 if [[ -n "$indir" ]]; then
     if [[ "$restructure_indir" == true ]]; then
         log_time "Restructuring input dir $indir into per-sample subdirs..."
         indir_restruct="$outdir"/input_restructured && mkdir -p "$indir_restruct"
+        
         for fq in "$indir"/*fastq.gz; do
-            fq=$(realpath "$fq")
             barcode=$(basename "$fq" .fastq.gz)
             mkdir -p "$indir_restruct"/"$barcode"
-            ln -sf "$fq" "$indir_restruct"/"$barcode"
+            ln -sf "$(realpath "$fq")" "$indir_restruct"/"$barcode"/"$barcode".fastq.gz
         done
+        
         indir="$indir_restruct"
     fi
     input_opt="--fastq $indir"
@@ -277,6 +286,7 @@ fi
 # Run the workflow
 log_time "Running $TOOL_NAME..."
 runstats $TOOL_BINARY \
+    -r "$workflow_version" \
     $input_opt \
     --out_dir "$outdir" \
     --classifier "$classifier" \
@@ -288,6 +298,9 @@ runstats $TOOL_BINARY \
     -ansi-log false \
     $config_opt \
     $resume_opt
+
+# Move the 'store_dir' dir from the current working dir to the outdir
+[[ -d store_dir ]] && mv store_dir "$outdir"/
 
 # ==============================================================================
 #                               WRAP-UP

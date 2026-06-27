@@ -125,7 +125,7 @@ run_ora <- function(
     # (Excluding the latter is equivalent to goseq's 'use_genes_without_cat=FALSE',
     # and this is done by default by ClusterProfiler -- but non-tested genes *are* included)
     if (!is.null(universe)) {
-      univ_vec <- universe[universe %in% term_map$gene]
+      univ_vec <- unique(universe[universe %in% term_map$gene])
     } else if (exclude_nontested == TRUE) {
       univ_df <- init_df |> dplyr::filter(!is.na(padj))
       if (!is.null(term_map)) univ_df <- univ_df |> dplyr::filter(gene %in% term_map$gene)

@@ -3,7 +3,7 @@
 #SBATCH --time=2:00:00
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=64G
-#SBATCH --mail-type=FAIL
+#SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=star_index
 #SBATCH --output=slurm-star_index-%j.out
 
@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Index a genome or transcriptome with STAR"
-SCRIPT_VERSION="2023-08-13"
+SCRIPT_VERSION="2026-05-21"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -22,13 +22,11 @@ TOOL_DOCS="https://github.com/alexdobin/STAR, https://github.com/alexdobin/STAR/
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/project/PAS0471/jelmer/conda/star
-container_path=
-container_url=
-dl_container=false
+env_type=container
+conda_path=
 container_dir="$HOME/containers"
-strict_bash=true
+container_url=oras://community.wave.seqera.io/library/samtools_star:952fa4513a08d418
+container_path=
 
 # Defaults - tool parameters
 index_size="auto"
@@ -38,48 +36,49 @@ mem_bytes=4000000000
 #                                   FUNCTIONS
 # ==============================================================================
 script_help() {
-    echo "                          $0"
-    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
-    echo "        =============================================================="
-    echo "DESCRIPTION:"
-    echo "  $DESCRIPTION"
-    echo
-    echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage:"
-    echo "      sbatch $0 -i data/ref/genome.fa --annot data/ref/annotation.gtf -o results/star_index"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile         <file>  Input file: a nucleotide FASTA file with a genome or transcriptome assembly"
-    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --annot             <file>  Reference annotation (GFF/GFF3/GTF) file (GTF preferred)  [default: no annotation file, but this is not recommended]"
-    echo "  --index_size        <int>   Index size                              [default: $index_size => automatically determined from genome size]"
-    echo "  --read_len          <int>   Read length (only applies with --annot) [default: unset]"
-    echo "                              This will determine the overhang length, which is by default 100-1 = 99 bp."
-    echo "  --opts              <str>   Quoted string with additional options for $TOOL_NAME"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --env_type               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
-    echo "                                (NOTE: If no default '--container_url' is listed below,"
-    echo "                                 you'll have to provide one in order to run the script with a container.)"
-    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
-    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
-    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
-    echo "  --no_strict                 Don't use strict Bash settings ('set -euo pipefail') -- can be useful for troubleshooting"
-    echo "  -h/--help                   Print this help message and exit"
-    echo "  -v                          Print the version of this script and exit"
-    echo "  --version                   Print the version of $TOOL_NAME and exit"
-    echo
-    echo "NOTES:"
-    echo "  The script will check how much memory has been allocated to the SLURM job (default: 64GB),"
-    echo "  and pass that to STAR via the 'limitGenomeGenerateRAM argument'."
-    echo "  When allocating more memory to the SLURM job,"
-    echo "  wich can be necessary for large genomes, this will therefore be passed to STAR as well."
-    echo
-    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
+    echo -e "
+                        $0
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL
+            =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+
+USAGE / EXAMPLE COMMANDS:
+  - Basic usage:
+      sbatch $0 -i data/ref/genome.fa --annot data/ref/annotation.gtf -o results/star_index
+
+REQUIRED OPTIONS:
+  -i/--infile       <file>  Input nucleotide FASTA file (genome or transcriptome)
+  -o/--outdir       <dir>   Output dir (will be created if needed)
+
+OTHER KEY OPTIONS:
+  --annot           <file>  Reference annotation (GFF/GFF3/GTF) file (GTF preferred)
+                                                                        [default: none, but recommended]
+  --index_size      <int>   Index size                                  [default: $index_size => auto from genome size]
+  --read_len        <int>   Read length (only applies with --annot)     [default: unset => overhang 99]
+                            Determines the overhang length (read_len - 1).
+  --more_opts       <str>   Quoted string with one or more additional options
+                            for $TOOL_NAME
+
+UTILITY OPTIONS:
+  --env_type        <str>   Whether to use a Singularity/Apptainer container  [default: $env_type]
+                            ('container') or a Conda environment ('conda')
+  --container_url   <str>   URL to download a container from                  [default (if any): $container_url]
+  --container_dir   <str>   Dir to download a container to                    [default: $container_dir]
+  --container_path  <file>  Local container image file ('.sif') to use        [default (if any): $container_path]
+  --conda_path      <dir>   Full path to a Conda environment to use           [default (if any): $conda_path]
+  -h/--help                 Print this help message
+  -v/--version              Print script and $TOOL_NAME versions
+
+NOTES:
+  The script will check how much memory has been allocated to the SLURM job (default: 64GB),
+  and pass that to STAR via 'limitGenomeGenerateRAM'. When allocating more memory to the
+  SLURM job (necessary for large genomes), this will be passed to STAR as well.
+
+TOOL DOCUMENTATION:
+  $TOOL_DOCS
+"
 }
 
 # Function to source the script with Bash functions
@@ -93,33 +92,38 @@ source_function_script() {
         script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
         SCRIPT_NAME=$(basename "$0")
     fi
-    function_script=$(realpath "$script_dir"/../dev/"$(basename "$FUNCTION_SCRIPT_URL")")
+    function_script_name="$(basename "$FUNCTION_SCRIPT_URL")"
+    function_script_path="$script_dir"/../dev/"$function_script_name"
+
     # Download the function script if needed, then source it
-    if [[ ! -f "$function_script" ]]; then
-        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
-        function_script=$(basename "$FUNCTION_SCRIPT_URL")
-        wget "$FUNCTION_SCRIPT_URL" -O "$function_script"
+    if [[ -f "$function_script_path" ]]; then
+        source "$function_script_path"
+    else
+        if [[ ! -f "$function_script_name" ]]; then
+            echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+            wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script_name"
+        fi
+        source "$function_script_name"
     fi
-    source "$function_script"
 }
 
 # Check if this is a SLURM job, then load the Bash functions
 if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
-source_function_script
+source_function_script $IS_SLURM
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
-infile=
-annot= && annot_opt=
-read_len= && overhang_opt=
-outdir=
-opts=
 version_only=false
+infile=
+annot=
+read_len=
+outdir=
+more_opts=
 threads=
 
-# Parse command-line args
+# Parse command-line options
 all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
@@ -128,14 +132,14 @@ while [ "$1" != "" ]; do
         --annot )           shift && annot=$1 ;;
         --index_size )      shift && index_size=$1 ;;
         --read_len )        shift && read_len=$1 ;;
-        --opts )            shift && opts=$1 ;;
-        --env_type )             shift && env_type=$1 ;;
-        --no_strict )       strict_bash=false ;;
-        --dl_container )    dl_container=true ;;
+        --more_opts )       shift && more_opts=$1 ;;
+        --env_type )        shift && env_type=$1 ;;
+        --conda_path )      shift && conda_path=$1 ;;
         --container_dir )   shift && container_dir=$1 ;;
-        --container_url )   shift && container_url=$1 && dl_container=true ;;
+        --container_url )   shift && container_url=$1 ;;
+        --container_path )  shift && container_path=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v | --version )         version_only=true ;;
+        -v | --version )    version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
@@ -145,10 +149,10 @@ done
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
 # Strict Bash settings
-[[ "$strict_bash" == true ]] && set -euo pipefail
+set -euo pipefail
 
 # Load software
-load_env "$conda_path" "$container_path" "$dl_container"
+load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$container_url"
 [[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 
 # Check options provided to the script
@@ -157,10 +161,15 @@ load_env "$conda_path" "$container_path" "$dl_container"
 [[ ! -f "$infile" ]] && die "Input file $infile does not exist"
 [[ -n "$annot" && ! -f "$annot" ]] && die "Annotation file $annot does not exist" "$all_opts"
 
-# Define outputs and final ops based on script parameters
-LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+# Define outputs based on script parameters
+LOG_DIR="$outdir"/logs
+mkdir -p "$LOG_DIR"
 [[ "$IS_SLURM" == true ]] && mem_bytes=$((SLURM_MEM_PER_NODE * 1000000))
+
+# Build other arguments
+annot_opt=
 [[ -n "$annot" ]] && annot_opt="--sjdbGTFfile $annot"
+overhang_opt=
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -168,12 +177,14 @@ LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options passed to this script:        $all_opts"
+echo "Working directory:                        $PWD"
+echo
 echo "Input assembly FASTA:                     $infile"
 echo "Output dir:                               $outdir"
 [[ -n "$annot" ]] && echo "Input annotation file:                    $annot"
-[[ -n "$read_len" ]] && echo "Read length (for overhang size):                              $read_len"
+[[ -n "$read_len" ]] && echo "Read length (for overhang size):          $read_len"
 [[ "$index_size" != "auto" ]] && echo "Index size:                               $index_size"
-[[ -n $opts ]] && echo "Additional options for $TOOL_NAME:        $opts"
+[[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
 ls -lh "$infile"
 [[ -n "$annot" ]] && ls -lh "$annot"
@@ -205,9 +216,8 @@ if [[ "$index_size" == "auto" ]]; then
     log_time "Index size (autom. determined):   $index_size"
 fi
 
-# If a GTF/GFF file is provided, build the appropriate argument for STAR
+# If read length is provided, determine overhang
 if [[ -n "$read_len" ]]; then
-    # Overhang length should be read length minus 1 - only if annot is included
     overhang=$(( read_len - 1 ))
     overhang_opt="--sjdbOverhang $overhang"
     log_time "Based on read length $read_len, setting overhang to: $overhang"
@@ -223,10 +233,11 @@ runstats $TOOL_BINARY \
     --runThreadN "$threads" \
     $annot_opt \
     $overhang_opt \
-    $opts
+    $more_opts
 
-#? 2023-08-13: Removed this option: '--sjdbGTFtagExonParentTranscript Parent'
-
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
 final_reporting "$LOG_DIR"

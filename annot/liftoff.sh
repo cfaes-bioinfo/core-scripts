@@ -1,32 +1,42 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=24:00:00
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=64G
+#SBATCH --time=4:00:00
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32G
 #SBATCH --mail-type=END,FAIL
-#SBATCH --job-name=repeatmasker
-#SBATCH --output=slurm-repeatmasker-%j.out
+#SBATCH --job-name=liftoff
+#SBATCH --output=slurm-liftoff-%j.out
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Run RepeatMasker on a genome assembly to identify and mask repetitive elements."
-SCRIPT_VERSION="2026-05-13"
+DESCRIPTION="
+Run Liftoff to transfer gene annotations from a reference assembly to a target assembly.
+Always runs with options -copies and -polish."
+SCRIPT_VERSION="2026-05-23"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
-TOOL_BINARY=RepeatMasker
-TOOL_NAME=RepeatMasker
-TOOL_DOCS=https://www.repeatmasker.org/
+TOOL_BINARY=liftoff
+TOOL_NAME=Liftoff
+TOOL_DOCS=https://github.com/agshumate/Liftoff
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=container
+env_type=container                  # Use a 'conda' env or a Singularity 'container'
 conda_path=
-container_url=oras://community.wave.seqera.io/library/repeatmasker:4.2.3--bf81e1c6f13e0d00
+container_url=oras://community.wave.seqera.io/library/liftoff_liftofftools:7a69d821dc62677b
 container_dir="$HOME/containers"
 container_path=
+
+# Constants/hard-coded - tool parameters
+# Always runs with options -copies and -polish
+
+# Defaults - tool parameters
+coverage=0.5                    # Same as liftoff default
+sequence_identity=0.5           # Same as liftoff default
+exclude_partial=false
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -42,29 +52,32 @@ $DESCRIPTION
     
 USAGE / EXAMPLE COMMANDS:
   - Basic usage example:
-      sbatch $0 -i results/genome.fa -o results/repeatmasker --genome_lib results/repeatmodeler/GCA_009761285.1-families.fa
+            sbatch $0 \
+                -i results/asm/novel_genome.fa \
+                --ref_fasta data/ref/soybase/glyma.Wm82.gnm1.FCtY.genome_main.fna \
+                --ref_gff data/ref/soybase/glyma.Wm82.gnm1.ann1.DvBy.gene_models_main.gff3 \
+                -o results/liftoff/novel_from_v1
     
 REQUIRED OPTIONS:
-  -i/--infile         <file>  Input FASTA file (genome assembly)
+  -i/--infile         <file>  Target assembly FASTA (novel genome)
+  --ref_fasta         <file>  Reference assembly FASTA used by the source annotation
+  --ref_gff           <file>  Reference annotation GFF/GTF to transfer
   -o/--outdir         <dir>   Output dir (will be created if needed)
-
-ONE OF THESE TWO OPTIONS IS REQUIRED (THEY ARE MUTUALLY EXCLUSIVE):
-  --genome_lib        <file>  Genome repeat library FASTA file produced by RepeatModeler (repeatmodeler.sh script)
-  --species           <str>   Species or taxonomic group name
-                              To check which species/groups are available, run, e.g:
-                              /fs/ess/PAS0471/jelmer/conda/repeatmasker/share/RepeatMasker/famdb.py names 'oomycetes'
     
 OTHER KEY OPTIONS:
+  --coverage          <float> Minimum feature coverage (-a)                    [default: $coverage]
+  --sequence_identity <float> Minimum sequence identity (-s)                   [default: $sequence_identity]
+  --exclude_partial           Pass Liftoff -exclude_partial
   --more_opts         <str>   Quoted string with one or more additional options
                               for $TOOL_NAME
     
 UTILITY OPTIONS:
-  --env_type          <str>   Use a Singularity container ('container')         [default: $env_type]
-                              or a Conda environment ('conda') 
-  --conda_path        <dir>   Full path to a Conda environment to use           [default: $conda_path]
-  --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
+  --env_type          <str>   Whether to use a Singularity/Apptainer container  [default: $env_type]
+                              ('container') or a Conda environment ('conda') 
   --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
-  --container_path    <file>  Local singularity image file (.sif) to use        [default (if any): $container_path]
+  --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
+  --container_path    <file>  Local container image file ('.sif') to use        [default (if any): $container_path]
+  --conda_path        <dir>   Full path to a Conda environment to use           [default (if any): $conda_path]
   -h/--help                   Print this help message
   -v/--version                Print script and $TOOL_NAME versions
     
@@ -109,9 +122,9 @@ source_function_script $IS_SLURM
 # Initiate variables
 version_only=false  # When true, just print tool & script version info and exit
 infile=
+ref_fasta=
+ref_gff=
 outdir=
-genome_lib=
-species= && species_opt=
 more_opts=
 threads=
 
@@ -120,9 +133,12 @@ all_opts="$*"
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --infile )     shift && infile=$1 ;;
+        --ref_fasta )       shift && ref_fasta=$1 ;;
+        --ref_gff )         shift && ref_gff=$1 ;;
         -o | --outdir )     shift && outdir=$1 ;;
-        --genome_lib )      shift && genome_lib=$1 ;;
-        --species )         shift && species=$1 ;;
+        --coverage )        shift && coverage=$1 ;;
+        --sequence_identity ) shift && sequence_identity=$1 ;;
+        --exclude_partial ) exclude_partial=true ;;
         --more_opts )       shift && more_opts=$1 ;;
         --env_type )        shift && env_type=$1 ;;
         --conda_path )      shift && conda_path=$1 ;;
@@ -148,23 +164,34 @@ load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$containe
 
 # Check options provided to the script
 [[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
+[[ -z "$ref_fasta" ]] && die "No reference FASTA specified, do so with --ref_fasta" "$all_opts"
+[[ -z "$ref_gff" ]] && die "No reference GFF specified, do so with --ref_gff" "$all_opts"
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
 [[ ! -f "$infile" ]] && die "Input file $infile does not exist"
-[[ -z "$species" ]] && [[ -z "$genome_lib" ]] && die "No --species or --genome_lib specified, one of these is required" "$all_opts"
-[[ -n "$species" ]] && [[ -n "$genome_lib" ]] && die "Both --species and --genome_lib are specified, but you can only use one of these options" "$all_opts"
-[[ -n "$genome_lib" && ! -f "$genome_lib" ]] && die "Input file $genome_lib does not exist"
+[[ ! -f "$ref_fasta" ]] && die "Input file $ref_fasta does not exist"
+[[ ! -f "$ref_gff" ]] && die "Input file $ref_gff does not exist"
 
 # Make file paths absolute
 infile=$(realpath "$infile")
-genome_lib=$(realpath "$genome_lib")
+ref_fasta=$(realpath "$ref_fasta")
+ref_gff=$(realpath "$ref_gff")
 [[ ! "$outdir" =~ ^/ ]] && outdir="$PWD"/"$outdir"
 
 # Define outputs based on script parameters
-LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+LOG_DIR="$outdir"/logs
+mkdir -p "$LOG_DIR"
 
-# Species/genome lib args
-[[ -n "$species" ]] && species_opt="-species $species"
-[[ -n "$genome_lib" ]] && genome_lib_opt="-lib $genome_lib"
+target_base=$(basename "$infile")
+target_base=${target_base%.gz}
+target_base=${target_base%.*}
+out_gff_path="$outdir"/"$target_base".liftoff.gff3
+unmapped_path="$outdir"/"$target_base".liftoff.unmapped.txt
+
+intermediate_dir="$outdir"/intermediate_files
+
+# Optional argument snippets
+exclude_partial_opt=
+[[ "$exclude_partial" == true ]] && exclude_partial_opt="-exclude_partial"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -174,50 +201,47 @@ echo "==========================================================================
 echo "All options passed to this script:        $all_opts"
 echo "Working directory:                        $PWD"
 echo
-echo "Input file:                               $infile"
+echo "Target assembly FASTA:                    $infile"
+echo "Reference assembly FASTA:                 $ref_fasta"
+echo "Reference annotation GFF:                 $ref_gff"
 echo "Output dir:                               $outdir"
-[[ -n $genome_lib ]] && echo "Genome database from RepeatModeler:       $genome_lib"
-[[ -n $species ]] && echo "Species name:                             $species"
+echo "Lifted annotation output:                 $out_gff_path"
+echo "Unmapped features output:                 $unmapped_path"
+echo "Minimum coverage (-a):                    $coverage"
+echo "Minimum sequence identity (-s):           $sequence_identity"
+echo "Exclude partial mappings:                 $exclude_partial"
+echo "Map extra copies:                         true"
+echo "Polish lifted annotation:                 true"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
-ls -lh "$infile"
-[[ -n $genome_lib ]] && ls -lh "$genome_lib"
+ls -lh "$infile" "$ref_fasta" "$ref_gff"
 set_threads "$IS_SLURM"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Move into the output dir
 cd "$outdir" || die "Can't change to output dir $outdir"
 
-# Run
 log_time "Running $TOOL_NAME..."
 runstats $TOOL_BINARY \
-    -pa $(( "$threads" / 4 )) \
-    -dir . \
-    -gff \
-    -html \
-    $genome_lib_opt \
-    $species_opt \
-    $more_opts \
-    "$infile"
-
-#? -s  Slow search; 0-5% more sensitive, 2-3 times slower than default
-#? -q  Quick search; 5-10% less sensitive, 2-5 times faster than default
-#? -qq Rush job; about 10% less sensitive, 4->10 times faster than default
-#?        (quick searches are fine under most circumstances) repeat options
-
-#? To check available species, e.g:
-# /fs/project/PAS0471/jelmer/conda/repeatmasker-4.1.2.p1/share/RepeatMasker/famdb.py names 'oomycetes'
-# /fs/project/PAS0471/jelmer/conda/repeatmasker-4.1.2.p1/share/RepeatMasker/famdb.py names 'stramenopiles'
-# /fs/project/PAS0471/jelmer/conda/repeatmasker-4.1.2.p1/share/RepeatMasker/famdb.py names 'phytophthora'
-
-#? Download parts of the Dfam database: https://www.dfam.org/releases/current/families/FamDB/
+    "$infile" \
+    "$ref_fasta" \
+    -g "$ref_gff" \
+    -o "$out_gff_path" \
+    -u "$unmapped_path" \
+    -dir "$intermediate_dir" \
+    -p "$threads" \
+    -a "$coverage" \
+    -s "$sequence_identity" \
+    $exclude_partial_opt \
+    -copies \
+    -polish \
+    $more_opts
 
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
 log_time "Listing files in the output dir:"
-ls -lh
+ls -lhd "$(realpath "$outdir")"/*
 final_reporting "$LOG_DIR"

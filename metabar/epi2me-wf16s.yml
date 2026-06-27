@@ -16,7 +16,7 @@ min_ref_coverage: 90              # Workflow default: 90
 taxonomic_rank: "S"               # Workflow default: G (Genus)
 
 ## Read processing options
-min_len: 800                      # Workflow default: 800
+min_len: 800                      # Workflow default: 800 // For ITS, should be 300, see https://github.com/epi2me-labs/wf-16s?tab=readme-ov-file#analysing-its-amplicons
 max_len: 2000                     # Workflow default: 2000
 
 ## Output options

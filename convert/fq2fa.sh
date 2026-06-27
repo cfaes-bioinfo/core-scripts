@@ -12,7 +12,7 @@ fq_in=$1
 fa_out=$2
 
 # Software
-module load miniconda3
+module load miniconda3/24.1.2-py310
 conda activate /fs/ess/PAS0471/jelmer/conda/seqtk
 
 # Bash strict settings

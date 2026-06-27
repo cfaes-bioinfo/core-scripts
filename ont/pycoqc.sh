@@ -191,7 +191,6 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 log_time "Running $TOOL_NAME..."
 runstats $TOOL_BINARY \
-    --threads "$threads" \
     -f "$infile" \
     -o "$outfile" \
     $qual_arg \
