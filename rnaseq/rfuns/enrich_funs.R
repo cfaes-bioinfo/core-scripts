@@ -4,11 +4,11 @@ if (!"ggforce" %in% installed.packages()) install.packages("ggforce")
 if (!"colorspace" %in% installed.packages()) install.packages("colorspace")
 if (!"BiocManager" %in% installed.packages()) install.packages("BiocManager")
 if (!"clusterProfiler" %in% installed.packages()) BiocManager::install("clusterProfiler")
+if (!"GO.db" %in% installed.packages()) BiocManager::install("GO.db")
 
 # GO TERM FUNCTIONS ------------------------------------------------------------
 # Get descriptions and ontologies (BP/MF/CC) for all GO terms 
 get_GO_info <- function() {
-  if (!"GO.db" %in% installed.packages()) BiocManager::install("GO.db")
   suppressPackageStartupMessages(library(GO.db))
   
   df <- AnnotationDbi::select(
@@ -29,6 +29,42 @@ get_GO_info <- function() {
   
   return(df)
 }
+
+# Get GO levels (currently only 1-3, the most generic ones)
+get_GO_levels <- function() {
+  suppressPackageStartupMessages(library(GO.db))
+  
+  # 1. Identify level 1 (The three root terms)
+  lvl1_ids <- c("GO:0008150", "GO:0003674", "GO:0005575")
+  
+  # 2. Create a helper function to safely fetch children across all three sub-ontologies
+  get_children <- function(go_ids) {
+    # Query each ontology environment separately, returning NA if not found
+    bp <- unname(unlist(mget(go_ids, GO.db::GOBPCHILDREN, ifnotfound = NA)))
+    cc <- unname(unlist(mget(go_ids, GO.db::GOCCCHILDREN, ifnotfound = NA)))
+    mf <- unname(unlist(mget(go_ids, GO.db::GOMFCHILDREN, ifnotfound = NA)))
+    
+    # Combine, drop NAs, and return unique IDs
+    all_children <- c(bp, cc, mf)
+    unique(all_children[!is.na(all_children)])
+  }
+  
+  # 3. Extract lvl 2 and lvl 3 terms systematically
+  lvl2_ids <- get_children(lvl1_ids)
+  lvl3_ids <- get_children(lvl2_ids)
+  
+  # 4. Build the unified lookup table dataframe
+  lvl_lookup <- tibble(GO_ID = unique(c(lvl1_ids, lvl2_ids, lvl3_ids))) |>
+    mutate(GO_lvl = case_when(
+      GO_ID %in% lvl1_ids ~ 1,
+      GO_ID %in% lvl2_ids ~ 2,
+      GO_ID %in% lvl3_ids ~ 3,
+      TRUE ~ NA_real_
+    ))
+  
+  return(lvl_lookup)
+}
+
 
 # CLUSTERPROFILER FUNCTIONS ----------------------------------------------------
 # Function to run a (GO or KEGG) standard over-representation (ORA) analysis
@@ -60,11 +96,14 @@ run_ora <- function(
                              #   This should typically *not* be the case, but could be so when working with gene IDs (orthologs)
                              #   from another species than the focal species to run the GO analysis
   sig_only = NULL,           #   Return only significant results. Default: FALSE when return_df is FALSE, TRUE when return_df is TRUE. 
+  simplify_terms = FALSE,    # Whether to use the clusterProfiler() simplify function to 'simplify'/filter the resulting list of significant GO terms by term similarity
+  simplify_cutoff = 0.7,     # Simplify similarity cutoff
   return_df = FALSE          # Convert results object to a simple dataframe (tibble), instead of keeping the ClusterProfiler object
                              #   Should be FALSE if you want to use the enrichPlot functions directly 
 ) {
 
   init_df <- df
+  GO_ontologies <- c("BP", "MF", "CC")
   
   if (is.null(focal_genes)) {
     # Check for name of lfc column, and presence of isDE column
@@ -125,7 +164,7 @@ run_ora <- function(
     # (Excluding the latter is equivalent to goseq's 'use_genes_without_cat=FALSE',
     # and this is done by default by ClusterProfiler -- but non-tested genes *are* included)
     if (!is.null(universe)) {
-      univ_vec <- unique(universe[universe %in% term_map$gene])
+      univ_vec <- universe[universe %in% term_map$gene]
     } else if (exclude_nontested == TRUE) {
       univ_df <- init_df |> dplyr::filter(!is.na(padj))
       if (!is.null(term_map)) univ_df <- univ_df |> dplyr::filter(gene %in% term_map$gene)
@@ -194,6 +233,29 @@ run_ora <- function(
       pvalueCutoff = 1,
       qvalueCutoff = 1
       )
+    if (simplify_terms == TRUE && !is.null(res) && nrow(res) > 0) {
+      if ("ontology" %in% colnames(term_map)) {
+        ont_lookup <- term_map |>
+          dplyr::select(term, ontology) |>
+          dplyr::distinct(term, .keep_all = TRUE)
+        res_df <- res@result |>
+          dplyr::left_join(ont_lookup, by = c("ID" = "term")) |>
+          dplyr::filter(p.adjust < p_enrich)
+        ontologies <- unique(res_df$ontology[!is.na(res_df$ontology)])
+        simplified_rows <- lapply(ontologies, function(ont) {
+          rows <- res_df |> dplyr::filter(ontology == ont)
+          if (nrow(rows) == 0) return(NULL)
+          semData <- GOSemSim::godata(ont = ont, computeIC = FALSE)
+          clusterProfiler:::simplify_internal(
+            rows, cutoff = simplify_cutoff, measure = "Wang",
+            ontology = ont, semData = semData
+          )
+        })
+        keep_ids <- do.call(rbind, simplified_rows)$ID
+        cat(" // simplified:", nrow(res_df), "->", length(keep_ids), "terms")
+        res@result <- res@result |> dplyr::filter(ID %in% keep_ids)
+      }
+    }
   } else if (ontology_type == "GO") {
     
     # GO with OrgDB
@@ -216,13 +278,26 @@ run_ora <- function(
     if (return_df == FALSE) {
       # If keeping the ClusterProfiler format, can't combine multiple results
       res <- enrichfun(GO_ontology = GO_ontology)
+      if (simplify_terms == TRUE) {
+        res@ontology <- GO_ontology
+        simplify(res, cutoff = simplify_cutoff)
+      } 
+      
     } else {
-      # If converting to a df, iterate over the GO ontologies
-      GO_ontologies <- c("BP", "MF", "CC")
-      res <- map_dfr(GO_ontologies, function(x) {
-        as_tibble(enrichfun(x)) |> mutate(ontology = x)
-      })
+      if (simplify_terms == FALSE) {
+        # If converting to a df, iterate over the GO ontologies
+        res <- map_dfr(GO_ontologies, function(x) {
+          as_tibble(enrichfun(x)) |> mutate(ontology = x)
+        })
+      } else {
+        res <- map_dfr(GO_ontologies, function(x) {
+          rr <- as_tibble(enrichfun(x)) |> mutate(ontology = x)
+          rr@ontology <- x
+          simplify(rr, cutoff = simplify_cutoff)
+        })
+      }
     }
+    
   }
   
   # ClusterProfiler may return NULL result for small sets
@@ -232,8 +307,11 @@ run_ora <- function(
   if (return_df == FALSE) {
     
     res_sig <- res |>
-      dplyr::filter(p.adjust < p_enrich, qvalue < q_enrich, Count >= min_DE_in_cat
-        )
+      dplyr::filter(
+        p.adjust < p_enrich,
+        qvalue < q_enrich,
+        Count >= min_DE_in_cat
+      )
     
     if (is.null(sig_only)) sig_only <- TRUE
     if (sig_only == TRUE) res <- res_sig
