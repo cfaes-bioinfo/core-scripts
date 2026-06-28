@@ -805,9 +805,9 @@ cdotplot <- function(
     x_title <- "Fold enrichment"
   } else if (x_var == "median_lfc") {
     x_title <- expression(paste("Median log"[2]*"-fold change"))
-  } else if (fill_var == "mean_lfc") {
+  } else if (x_var == "mean_lfc") {
     x_title <- expression(paste("Mean log"[2]*"-fold change"))
-  } 
+  }
   
   # Color scale - https://carto.com/carto-colors/
   if (fill_var %in% c("mean_lfc", "median_lfc")) {
@@ -823,7 +823,7 @@ cdotplot <- function(
       option = "D",
       na.value = "grey95",
       name = color_name,
-      )
+    )
   } else {
     col_scale <- scale_color_brewer(palette = "Dark2")
   }
