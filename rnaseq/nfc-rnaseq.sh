@@ -13,7 +13,7 @@
 # Constants - generic
 DESCRIPTION="Run the Nextflow-core RNAseq pipeline from https://nf-co.re/rnaseq
   with aligner option STAR => Salmon"
-SCRIPT_VERSION="2025-01-24"
+SCRIPT_VERSION="2025-07-12"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY="nextflow run"
@@ -26,7 +26,7 @@ OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/next
 ALIGNER_OPT="--aligner star_salmon "                   # Always use STAR => Salmon
 
 # Defaults - pipeline parameters
-workflow_version=3.18.0                                # The version of the nf-core workflow
+workflow_version=3.26.0                                # The version of the nf-core workflow
 resume=true && resume_arg="-resume"                    # Resume the workflow from wherever it left off
 biotype_qc=false                                       # Activate --skip_biotype_qc option of the workflow
 salmon_gcbias=true                                     # Pass the --gcBias option to Salmon
