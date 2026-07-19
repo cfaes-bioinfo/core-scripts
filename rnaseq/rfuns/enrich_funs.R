@@ -819,6 +819,7 @@ cdotplot <- function(
       rev = TRUE
     )
   } else if (class(df[[fill_var]]) == "numeric") {
+    # Another good scale: scale_color_scico(palette = "batlow")
     col_scale <- scale_color_viridis_c(
       option = "D",
       na.value = "grey95",
