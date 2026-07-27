@@ -14,7 +14,7 @@
 DESCRIPTION="Run Braker3 to annotate a genome assembly.
 As 'evidence' for annotation, provide RNAseq data of the same species and/or
 protein data of the same or related species."
-SCRIPT_VERSION="2024-09-28"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -157,7 +157,7 @@ set -euo pipefail
 load_env "$conda_path" "$container_path" "$dl_container"
 [[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
 # GeneMark license key - See https://github.com/Gaius-Augustus/BRAKER#genemark-ex
-#GENEMARK_BASEDIR=/fs/project/PAS0471/jelmer/software/genemark-ex
+#GENEMARK_BASEDIR=/fs/ess/PAS0471/jelmer/software/genemark-ex
 #cp "$GENEMARK_BASEDIR"/gm_key_64 ~/.gm_key
 
 # Check options provided to the script

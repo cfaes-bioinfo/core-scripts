@@ -13,7 +13,7 @@
 # Constants
 DESCRIPTION="Run the BactFinder Nextflow workflow to examine bacterial
 genome assemblies with ResFinder, VirulenceFinder and PlasmidFinder"
-SCRIPT_VERSION="2024-11-09"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -27,9 +27,9 @@ OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/next
 OSC_CONFIG=mcic-scripts/nextflow/osc.config
 
 # Defaults - generics
-conda_path=/fs/project/PAS0471/jelmer/conda/nextflow
+conda_path=/fs/ess/PAS0471/jelmer/conda/nextflow
 osc_config=mcic-scripts/nextflow/osc.config  # Will be downloaded if not present here
-container_dir=/fs/project/PAS0471/containers
+container_dir=/fs/ess/PAS0471/containers
 container_path=
 dl_container=false
 profile="conda" #profile="standard,singularity"

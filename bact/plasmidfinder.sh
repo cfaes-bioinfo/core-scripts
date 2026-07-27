@@ -18,7 +18,7 @@
 readonly SCRIPT_NAME="plasmidfinder.sh"
 readonly SCRIPT_VERSION="1.0"
 readonly SCRIPT_AUTHOR="Jelmer Poelstra"
-readonly CONDA_ENV="/fs/project/PAS0471/jelmer/conda/plasmidfinder-2.1.6"
+readonly CONDA_ENV="/fs/ess/PAS0471/jelmer/conda/plasmidfinder-2.1.6"
 readonly TOOL_BINARY="plasmidfinder.py"
 readonly TOOL_NAME="PlasmidFinder"
 readonly TOOL_DOCS="https://bitbucket.org/genomicepidemiology/plasmidfinder/src/master"

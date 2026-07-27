@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run a pangenome analysis with Panaroo and align core genes"
-SCRIPT_VERSION="2023-12-16"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -23,7 +23,7 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
 env_type=container                           # 'conda' or 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/panaroo
+conda_path=
 container_path=/fs/ess/PAS0471/containers/depot.galaxyproject.org-singularity-panaroo-1.3.3--pyhdfd78af_0.img
 container_url=https://depot.galaxyproject.org/singularity/panaroo:1.3.3--pyhdfd78af_0
 dl_container=false

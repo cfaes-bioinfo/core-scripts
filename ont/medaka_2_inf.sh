@@ -17,7 +17,7 @@
 # Constants - generic
 DESCRIPTION="Run Medaka to polish a genome assembly with ONT reads.
 Parallel edition - script 2 of 3"
-SCRIPT_VERSION="2023-09-28"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -27,9 +27,9 @@ TOOL_DOCS=https://github.com/nanoporetech/medaka
 VERSION_COMMAND="medaka --version"
 
 # Defaults - generics
-env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/medaka
-container_path=
+env_type=container                           # Use a 'conda' env or a Singularity 'container'
+conda_path=
+container_path=oras://community.wave.seqera.io/library/medaka:2.2.2--93eb3c09ecc347a8
 container_url=
 dl_container=false
 container_dir="$HOME/containers"

@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run the nf-core dualRNAseq pipeline from https://nf-co.re/dualrnaseq"
-SCRIPT_VERSION="2023-08-19"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY="nextflow run"
@@ -34,8 +34,8 @@ RUN_STAR=true
 SALMON_LIBTYPE=A              # Automatic detection
 
 # Defaults - generic
-conda_path=/fs/project/PAS0471/jelmer/conda/nextflow-22.10 # This workflow was made in DSL1, does not work with latest Nextflow versions
-container_dir=/fs/project/PAS0471/containers
+conda_path=/fs/ess/PAS0471/jelmer/conda/nextflow-22.10 # This workflow was made in DSL1, does not work with latest Nextflow versions
+container_dir=/fs/ess/PAS0471/containers
 profile="singularity"
 resume=true && resume_arg="-resume"
 

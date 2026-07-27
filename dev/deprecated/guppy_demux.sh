@@ -7,7 +7,7 @@ set -ueo pipefail
 
 # SETUP ------------------------------------------------------------------------
 # Load software (https://community.nanoporetech.com/downloads)
-GUPPY_DIR=/fs/project/PAS0471/jelmer/software/guppy-6.5.7/ont-guppy
+GUPPY_DIR=/fs/ess/PAS0471/jelmer/software/guppy-6.5.7/ont-guppy
 DEMUX_BIN="$GUPPY_DIR"/bin/guppy_barcoder
 CONFIG_FILE="$GUPPY_DIR"/data/barcoding/configuration.cfg
 

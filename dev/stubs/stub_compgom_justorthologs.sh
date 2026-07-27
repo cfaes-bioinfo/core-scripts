@@ -12,7 +12,7 @@
 
 # Load the software
 module load miniconda3
-conda activate /fs/project/PAS0471/jelmer/conda/justorthologs-0.0.2
+conda activate /fs/ess/PAS0471/jelmer/conda/justorthologs-0.0.2
 
 dmel_gff=data/ref/dmel/dmel-all-r6.54_nofasta.gff
 dmel_fa=data/ref/dmel/dmel-all-r6.54_fromgff.fa

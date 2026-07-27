@@ -43,7 +43,7 @@ Print_help() {
 ## Load software
 Load_software() {
     module load python
-    source activate /fs/project/PAS0471/jelmer/conda/nextdenovo-env
+    source activate /fs/ess/PAS0471/jelmer/conda/nextdenovo-env
     MCIC_SCRIPTS_REPO=https://github.com/mcic-osu/mcic-scripts.git
     TEMPLATE_CONFIG=mcic-scripts/assembly/nextdenovo.cfg
 }

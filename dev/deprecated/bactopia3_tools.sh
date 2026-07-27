@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run Bactopia v3 tools for follow-up analyses to the main Bactopia workflow"
-SCRIPT_VERSION="2023-12-16"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -32,13 +32,13 @@ MAX_RETRY=1                                     # Retry failed jobs just once
 
 # Defaults - Nextflow generics
 work_dir_default=/fs/scratch/$SLURM_JOB_ACCOUNT/$USER/bactopia
-container_dir=/fs/project/PAS0471/containers
+container_dir=/fs/ess/PAS0471/containers
 profile=singularity
 resume=true && resume_opt="-resume"
 
 # Defaults - other generics
 env_type=conda                                       # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/project/PAS0471/jelmer/conda/bactopia3
+conda_path=/fs/ess/PAS0471/jelmer/conda/bactopia3
 version_only=false                              # When true, just print tool & script version info and exit
 
 # ==============================================================================

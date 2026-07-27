@@ -60,7 +60,7 @@ done
 # SETUP ------------------------------------------------------------------------
 ## Load software
 module load python/3.6-conda5.2
-source activate /fs/project/PAS0471/jelmer/conda/checkm-1.2.0
+source activate /fs/ess/PAS0471/jelmer/conda/checkm-1.2.0
 
 ## Bash strict settings
 set -euo pipefail

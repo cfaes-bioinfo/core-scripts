@@ -10,7 +10,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run the Nextflow/nf-core metagenomic taxonomic profiling pipeline 'taxprofiler' (https://nf-co.re/taxprofiler)"
-SCRIPT_VERSION="2025-02-01"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY="nextflow run"
@@ -24,7 +24,7 @@ OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/next
 
 # Parameter defaults - infrastructure
 version_only=false                                          # When true, just print tool & script version info and exit
-conda_path=/fs/project/PAS0471/jelmer/conda/nextflow
+conda_path=/fs/ess/PAS0471/jelmer/conda/nextflow
 osc_account=PAS0471                                         # If the scripts is submitted with another project, this will be updated (line below)
 [[ -n $SLURM_JOB_ACCOUNT ]] && osc_account=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
 

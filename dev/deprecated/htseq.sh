@@ -55,7 +55,7 @@ done
 # SETUP ---------------------------------------------------------------------
 ## Load software
 module load miniconda3
-source activate /fs/project/PAS0471/jelmer/conda/htseq-2.0.2
+source activate /fs/ess/PAS0471/jelmer/conda/htseq-2.0.2
 conda activate --stack /fs/ess/PAS0471/jelmer/conda/samtools
 
 ## Strict bash settings

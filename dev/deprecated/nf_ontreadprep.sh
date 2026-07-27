@@ -28,12 +28,12 @@ readonly TOOL_BINARY=nextflow
 readonly TOOL_DOCS=https://github.com/jelmerp/nf_ontreadprep
 
 #readonly WORKFLOW_REPO=https://github.com/jelmerp/nf_ontreadprep #TODO
-WORKFLOW_REPO=/fs/project/PAS2380/assembly/jelmer/workflows/ontreadprep/main.nf
+WORKFLOW_REPO=/fs/ess/PAS2380/assembly/jelmer/workflows/ontreadprep/main.nf
 readonly OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config
 
 # Option defaults
 osc_config=mcic-scripts/nextflow/osc.config  # Will be downloaded if not present here
-container_dir=/fs/project/PAS0471/containers
+container_dir=/fs/ess/PAS0471/containers
 profile="conda"
 if [[ "$is_slurm" == true ]]; then
     PROJ=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")

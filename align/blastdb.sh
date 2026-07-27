@@ -11,7 +11,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Create a custom BLAST database"
-SCRIPT_VERSION="2025-02-22"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -21,7 +21,7 @@ VERSION_COMMAND="$TOOL_BINARY -version"
 
 # Defaults - generics
 env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/conda/blast-2.16.0
+conda_path=/fs/ess/PAS0471/conda/blast-2.17.0
 container_dir="$HOME/containers"
 
 # Defaults - tool parameters
@@ -43,8 +43,8 @@ script_help() {
     echo
     echo "REQUIRED OPTIONS:"
     echo "  -i/--infile         <file>  Input FASTA file"
-    echo "                                Header lines should not contain '|' characters"
-    echo "                                See https://www.ncbi.nlm.nih.gov/books/NBK569841"
+    echo "                              Header lines should not contain '|' characters".
+    echo "                              See https://www.ncbi.nlm.nih.gov/books/NBK569841"
     echo "  -o/--outdir         <dir>   Output dir for BLAST db (will be created if needed)"
     echo
     echo "OTHER KEY OPTIONS:"
@@ -55,9 +55,7 @@ script_help() {
     echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
     echo
     echo "UTILITY OPTIONS:"
-    echo "  --env_type               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
-    echo "                                (NOTE: If no default '--container_url' is listed below,"
-    echo "                                 you'll have to provide one in order to run the script with a container.)"
+    echo "  --env_type          <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
     echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
     echo "  --container_url     <str>   URL to download the container from"
     echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
@@ -114,11 +112,11 @@ while [ "$1" != "" ]; do
         --db_name )         shift && db_name=$1 ;;
         --taxid_map )       shift && taxid_map=$1 ;;
         --more_opts )       shift && more_opts=$1 ;;
-        --env_type )             shift && env_type=$1 ;;
+        --env_type )        shift && env_type=$1 ;;
         --container_dir )   shift && container_dir=$1 ;;
         --container_url )   shift && container_url=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v | --version )         version_only=true ;;
+        -v | --version )    version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift

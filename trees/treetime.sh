@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run TreeTime to date a phylogenetic tree using either tip dates or a clock rate"
-SCRIPT_VERSION="2023-10-21"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -23,9 +23,9 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
 env_type=container                          # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/project/PAS0471/jelmer/conda/treetime
-container_path=/fs/ess/PAS0471/containers/treetime_0.10.1--pyh7cba7a3_0.sif
-container_url=docker://quay.io/biocontainers/treetime:0.10.1--pyh7cba7a3_0
+conda_path=
+container_url=oras://community.wave.seqera.io/library/treetime:0.12.1--7f0a99752f652586
+container_path=
 dl_container=false
 container_dir="$HOME/containers"
 

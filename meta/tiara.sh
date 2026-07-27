@@ -10,7 +10,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run Tiara to classify sequences to archaea, bacteria, prokarya, eukarya, mitochondria, plastid, or unknown"
-SCRIPT_VERSION="2025-03-06"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -20,8 +20,8 @@ TOOL_DOCS=https://github.com/ibe-uw/tiara
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=conda                       # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/tiara
+env_type=container                       # Use a 'conda' env or a Singularity 'container'
+conda_path=oras://community.wave.seqera.io/library/tiara:1.0.3--d480987a4510ea1c
 container_url=
 container_dir="$HOME/containers"
 

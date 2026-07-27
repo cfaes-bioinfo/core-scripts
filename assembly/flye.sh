@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run Flye to assemble a genome with long reads"
-SCRIPT_VERSION="2024-09-24"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -24,7 +24,7 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 # Defaults - generics
 #? 2024-09-24: Using a container by default because I regularly get malloc and core dumping with the Conda env
 env_type=container                                    # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/flye
+conda_path=
 container_url=oras://community.wave.seqera.io/library/flye:2.9.6--0c4130a5dcdcfcbf
 container_path=
 container_dir="$HOME/containers"

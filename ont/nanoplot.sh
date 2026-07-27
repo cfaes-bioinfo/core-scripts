@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run NanoPlot to QC ONT/PacBio reads using sequencing summary/FASTQ/BAM input"
-SCRIPT_VERSION="2026-04-06"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -23,7 +23,7 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
 env_type=container              # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/nanoplot
+conda_path=
 container_url=oras://community.wave.seqera.io/library/nanoplot:1.46.2--df666265eb467952
 container_dir="$HOME/containers"
 container_path=

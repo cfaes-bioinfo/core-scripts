@@ -58,7 +58,7 @@ echo
 # SOFTWARE ---------------------------------------------------------------------
 ## Load software
 module load python/3.6-conda5.2
-source activate /fs/project/PAS0471/jelmer/conda/khmer-3.0
+source activate /fs/ess/PAS0471/jelmer/conda/khmer-3.0
 
 
 # OTHER SETUP ------------------------------------------------------------------ 

@@ -14,7 +14,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run Ratatosk to correct long reads with Illumina reads"
-SCRIPT_VERSION="2024-09-26"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -24,8 +24,8 @@ TOOL_DOCS=https://github.com/DecodeGenetics/Ratatosk
 VERSION_COMMAND="Ratatosk --version"
 
 # Defaults - generics
-env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/ratatosk
+env_type=container                           # Use a 'conda' env or a Singularity 'container'
+conda_path=oras://community.wave.seqera.io/library/ratatosk:0.9.0--81e0b409b2fd5760
 container_path=
 container_url=
 dl_container=false

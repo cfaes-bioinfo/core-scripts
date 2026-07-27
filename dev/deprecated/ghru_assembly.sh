@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generics
 DESCRIPTION="Run the modified GHRU assembly pipeline to assemble bacterial genomes"
-SCRIPT_VERSION="2023-10-17"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY="nextflow run"
@@ -28,7 +28,7 @@ OSC_PROJ=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
 # Defaults - generics
 workflow_dir="workflows/ghru_assembly"
 conda_path=/fs/ess/PAS0471/jelmer/conda/nextflow-22.10 # Need this older version because it's a DSL1 Workflow
-container_dir=/fs/project/PAS0471/containers
+container_dir=/fs/ess/PAS0471/containers
 work_dir=/fs/scratch/$OSC_PROJ/$USER/ghru_assembly
 profile="standard,singularity"
 resume=true && resume_arg="-resume"

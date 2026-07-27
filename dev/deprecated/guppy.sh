@@ -17,7 +17,7 @@ readonly SCRIPT_NAME=guppy_gpu.sh
 readonly SCRIPT_VERSION="1.0"
 readonly SCRIPT_AUTHOR="Jelmer Poelstra"
 readonly REPO_URL=https://github.com/mcic-osu/mcic-scripts
-readonly GUPPY_DIR=/fs/project/PAS0471/jelmer/software/guppy-6.5.7/ont-guppy
+readonly GUPPY_DIR=/fs/ess/PAS0471/jelmer/software/guppy-6.5.7/ont-guppy
 readonly TOOL_BINARY="$GUPPY_DIR"/bin/guppy_basecaller
 readonly MODULE=cuda
 

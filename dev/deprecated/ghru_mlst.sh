@@ -23,7 +23,7 @@ Help() {
     echo "  -s / --species STRING         Focal species - make sure to quote the species string, e.g.:"
     echo "                                sbatch $0 -s 'Salmonella enterica'"
     echo "                                To see a list of possible species, run:"
-    echo "                                  module load miniconda3 && source activate /fs/project/PAS0471/jelmer/conda/ariba-2.14.6"
+    echo "                                  module load miniconda3 && source activate /fs/ess/PAS0471/jelmer/conda/ariba-2.14.6"
     echo "                                  ariba pubmlstspecies"
     echo
     echo
@@ -46,7 +46,7 @@ Help() {
     echo "OPTIONS YOU PROBABLY DON'T NEED TO USE:"
     echo "---------------------------------------"
     echo "  -n / --nextflow_file FILE     Workflow definition file (a '*.nf' file)"
-    echo "                                [default: '/fs/project/PAS0471/jelmer/assist/2022-09_alejandra/workflows/ghru_mlst/main.nf']"
+    echo "                                [default: '/fs/ess/PAS0471/jelmer/assist/2022-09_alejandra/workflows/ghru_mlst/main.nf']"
     echo
     echo "  -p / --profile STRING         Profile from any of the config files to use [default: 'conda']"
     echo
@@ -55,7 +55,7 @@ Help() {
     echo "                                  - Use a comma-separated list when supplying multiple files" 
     echo "                                  - The mcic-scripts OSC config will always be used, https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config"
     echo
-    echo "  -t / --container_dir DIR      Singularity container dir                   [default: '/fs/project/PAS0471/containers']"
+    echo "  -t / --container_dir DIR      Singularity container dir                   [default: '/fs/ess/PAS0471/containers']"
     echo "                                  - This is where any containers used in the workflow will be downloaded to"
     echo
     echo "  -w DIR / --work_dir           'work' (scratch) dir for the workflow       [default: '/fs/scratch/PAS0471/$USER/ghru_mlst']"
@@ -93,7 +93,7 @@ function Die() {
 ## Load the software
 Load_software() {
     module load miniconda3/4.12.0-py39
-    source activate /fs/project/PAS0471/jelmer/conda/nextflow
+    source activate /fs/ess/PAS0471/jelmer/conda/nextflow
 
     ## Singularity container dir - any downloaded containers will be stored here
     export NXF_SINGULARITY_CACHEDIR="$container_dir"
@@ -110,9 +110,9 @@ osc_config=mcic-scripts/nextflow/osc.config  # Will be downloaded if not present
 ## Option defaults
 fastq_pattern='*R{1,2}*.fastq.gz'
 outdir="results/ghru_mlst"
-nextflow_file="/fs/project/PAS0471/jelmer/assist/2022-09_alejandra/workflows/ghru_mlst/main.nf"
+nextflow_file="/fs/ess/PAS0471/jelmer/assist/2022-09_alejandra/workflows/ghru_mlst/main.nf"
 profile="conda"
-container_dir=/fs/project/PAS0471/containers
+container_dir=/fs/ess/PAS0471/containers
 work_dir=/fs/scratch/PAS0471/$USER/ghru_mlst
 resume=true && resume_arg="-resume"
 debug=false

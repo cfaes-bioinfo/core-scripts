@@ -57,7 +57,7 @@ Print_help() {
 
 # Load software
 Load_software() {
-    EFFECTOR_P=/fs/project/PAS0471/jelmer/software/EffectorP-3.0/EffectorP.py
+    EFFECTOR_P=/fs/ess/PAS0471/jelmer/software/EffectorP-3.0/EffectorP.py
 }
 
 # Print version

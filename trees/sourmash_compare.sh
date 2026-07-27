@@ -18,8 +18,8 @@ This script will:
   (3) Compare the signature with 'sourmash compare'
   (4) Plot a dendrogram and distance/similarity matrix with 'sourmash plot'"
 MODULE=miniconda3
-CONDA=/fs/project/PAS0471/jelmer/conda/sourmash
-SCRIPT_VERSION="2023-07-23"
+CONDA=/fs/ess/PAS0471/conda/sourmash_4.9.4
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY="sourmash"

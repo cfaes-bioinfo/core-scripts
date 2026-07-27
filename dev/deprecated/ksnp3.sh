@@ -18,7 +18,7 @@ The script will run kSNP3 with the following hardcoded options:
   -vcf      To also output a VCF file
   -ML       To also create an ML tree
   -core     To also output files for 'core SNPs' only"
-SCRIPT_VERSION="2023-08-27"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -29,7 +29,7 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
 env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/project/PAS0471/jelmer/conda/knsp-3.1
+conda_path=/fs/ess/PAS0471/jelmer/conda/knsp-3.1
 container_path=
 container_url=
 dl_container=false

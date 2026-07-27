@@ -65,7 +65,7 @@ function Die() {
 ## Load Nextflow
 function Load_software() {
     module load miniconda3/4.12.0-py39
-    source activate /fs/project/PAS0471/jelmer/conda/sistr-1.1.1
+    source activate /fs/ess/PAS0471/jelmer/conda/sistr-1.1.1
 }
 
 ## Print version

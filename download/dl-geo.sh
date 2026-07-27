@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Download GEO (Gene Expression Omnibus) data using geofetch"
-SCRIPT_VERSION="2024-01-20"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -22,9 +22,9 @@ TOOL_DOCS=https://geofetch.databio.org/en/latest
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/geofetch
-container_path=
+env_type=container                           # Use a 'conda' env or a Singularity 'container'
+conda_path=
+container_path=oras://community.wave.seqera.io/library/geofetch:0.12.11--6b28eb2b012db7b2
 container_url=
 dl_container=false
 container_dir="$HOME/containers"

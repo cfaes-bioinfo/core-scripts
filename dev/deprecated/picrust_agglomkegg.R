@@ -26,7 +26,7 @@ module_out <- args[3]                    # Output file: counts-by-module df
 pathway_out <- args[4]                   # Output file: counts-by-pathway df
 
 # Example parameters to run interactively
-# ko_counts_in <- "/fs/project/PAS1548/FGG_Hydroponics_Survey/Analysis/phyloseq_analysis/Picrust_results_16S/KO_metagenome_out/pred_metagenome_unstrat.tsv.gz"
+# ko_counts_in <- "/fs/ess/PAS1548/FGG_Hydroponics_Survey/Analysis/phyloseq_analysis/Picrust_results_16S/KO_metagenome_out/pred_metagenome_unstrat.tsv.gz"
 # kegg_map_in <- "/fs/ess/PAS0471/jelmer/refdata/kegg/ko_map.tsv"
 # module_out <- "results/picrust/agglom_kegg/kegg_module_counts.txt"
 # pathway_out <- "results/picrust/agglom_kegg/kegg_pathway_counts.txt"

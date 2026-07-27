@@ -55,12 +55,12 @@ Load_software() {
     set +u
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /fs/project/PAS0471/jelmer/conda/transabyss-2.0.1
+    source activate /fs/ess/PAS0471/jelmer/conda/transabyss-2.0.1
     set -u
 
     #? NOTE about the Conda environment
     #? To avoid warnings about a missing Makefile, I made it executable:
-    #? chmod +x /fs/project/PAS0471/jelmer/conda/transabyss-2.0.1/bin/abyss-pe.Makefile
+    #? chmod +x /fs/ess/PAS0471/jelmer/conda/transabyss-2.0.1/bin/abyss-pe.Makefile
     #? See https://github.com/bcgsc/transabyss/issues/26
 }
 

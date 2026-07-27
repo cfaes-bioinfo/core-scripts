@@ -13,7 +13,7 @@
 # Constants - generic
 DESCRIPTION="Run ABRicate to screen bacterial genome assemblues for antimicrobial and virulence genes
 The output file will have the same name as the input fasta, with the extension switched to '.tab'"
-SCRIPT_VERSION="2023-08-15"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -23,10 +23,10 @@ TOOL_DOCS=https://github.com/tseemann/abricate
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/project/PAS0471/jelmer/conda/abricate-1.0.1
+env_type=container                           # Use a 'conda' env or a Singularity 'container'
+conda_path=
+container_url=oras://community.wave.seqera.io/library/abricate:1.4.0--1c91d3be16669e36
 container_path=
-container_url=
 dl_container=false
 container_dir="$HOME/containers"
 strict_bash=true

@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run purge_dups to remove very similar contigs (likely haplotypic variants from a genome assembly)"
-SCRIPT_VERSION="2023-09-28"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -22,10 +22,10 @@ TOOL_DOCS=https://github.com/dfguan/purge_dups
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/project/PAS0471/jelmer/conda/purge_dups-1.2.6
+env_type=container                       # Use a 'conda' env or a Singularity 'container'
+conda_path=
 container_path=
-container_url=
+container_url=docker://quay.io/biocontainers/purge_dups:1.2.6--h577a1d6_3
 dl_container=false
 container_dir="$HOME/containers"
 version_only=false                 # When true, just print tool & script version info and exit

@@ -50,7 +50,7 @@ Print_help() {
 Load_software() {
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
-    source activate /fs/project/PAS0471/jelmer/conda/metaxa-2.2.3
+    source activate /fs/ess/PAS0471/jelmer/conda/metaxa-2.2.3
 }
 
 ## Print version

@@ -14,8 +14,8 @@
 DESCRIPTION="Run snippy-multi to align FASTQ files for multiple samples
 to a reference genome and find SNPs"
 MODULE=miniconda3
-CONDA=/fs/project/PAS0471/jelmer/conda/snippy-4.6.0
-SCRIPT_VERSION="2023-07-21"
+CONDA=/fs/ess/PAS0471/jelmer/conda/snippy-4.6.0
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY=snippy-multi

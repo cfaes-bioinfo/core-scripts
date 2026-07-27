@@ -13,8 +13,8 @@
 # Constants - generic
 DESCRIPTION="Run Gubbins to remove HGT among a bacterial genome alignment, and create a phylogenetic tree"
 MODULE=miniconda3
-CONDA=/fs/project/PAS0471/jelmer/conda/gubbins
-SCRIPT_VERSION="2023-07-21"
+CONDA=/fs/ess/PAS0471/jelmer/conda/gubbins
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY=run_gubbins.py

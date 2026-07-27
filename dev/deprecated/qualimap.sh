@@ -64,7 +64,7 @@ echo
 
 ## Load software
 module load python/3.6-conda5.2
-source activate /fs/project/PAS0471/jelmer/conda/qualimap-env
+source activate /fs/ess/PAS0471/jelmer/conda/qualimap-env
 
 ## Bash strict mode
 set -euo pipefail

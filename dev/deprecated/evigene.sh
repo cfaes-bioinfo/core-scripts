@@ -63,7 +63,7 @@ Print_help() {
 Load_software() {
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    CONDA_ENV_DIR=/fs/project/PAS0471/jelmer/conda/evigene
+    CONDA_ENV_DIR=/fs/ess/PAS0471/jelmer/conda/evigene
     source activate "$CONDA_ENV_DIR"
     EVIGENE="$CONDA_ENV_DIR"/bin/prot/tr2aacds.pl
 }

@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run Roary for a pangenome analysis"
-SCRIPT_VERSION="2023-07-25"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -22,10 +22,10 @@ TOOL_DOCS=https://sanger-pathogens.github.io/Roary
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/roary-3.13
+env_type=container                       # Use a 'conda' env or a Singularity 'container'
+conda_path=
+container_url=https://depot.galaxyproject.org/singularity/roary:3.13.0--pl526h516909a_0
 container_path=
-container_url=
 dl_container=false
 container_dir="$HOME/containers"
 

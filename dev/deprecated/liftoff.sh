@@ -68,7 +68,7 @@ done
 # SETUP ------------------------------------------------------------------------
 ## Load software
 module load python/3.6-conda5.2
-source activate /fs/project/PAS0471/jelmer/conda/liftoff-1.6.3
+source activate /fs/ess/PAS0471/jelmer/conda/liftoff-1.6.3
 
 ## Bash strict mode
 set -euo pipefail

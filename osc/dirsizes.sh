@@ -20,6 +20,6 @@ echo -e "\n# Done."
 date
 
 # Examples:
-# script=/fs/project/PAS0471/jelmer/scripts/admin/dirsizes.sh
+# script=/fs/ess/PAS0471/jelmer/scripts/admin/dirsizes.sh
 # for dir in $(find . -maxdepth 1 -type d); do sbatch "$script" "$dir" 1; done
 # sbatch "$script" ./osu6702 1

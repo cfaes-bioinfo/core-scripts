@@ -14,7 +14,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run FastQC for quality control of 1 or more FASTQ files"
-SCRIPT_VERSION="2025-03-13"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 TOOL_BINARY=fastqc
@@ -24,7 +24,7 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
 env_type=conda
-conda_path=/fs/project/PAS0471/jelmer/conda/fastqc
+conda_path=/fs/ess/PAS0471/jelmer/conda/fastqc
 container_dir="$HOME/containers"
 container_url=
 container_path=

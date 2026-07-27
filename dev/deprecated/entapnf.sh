@@ -46,7 +46,7 @@ Print_help() {
     echo "  -nf             <file>  Nextflow workflow definition file                       [default: 'workflows/nf-transcriptome-assembly/main.nf']"
     echo "  -restart                Don't attempt to resume workflow run, but start over    [default: resume]"
     echo "  -profile        <str>   Profile from any of the config files to use             [default: 'conda,normal']"
-    echo "  -ctn-dir        <dir>   Singularity container dir                               [default: '/fs/project/PAS0471/containers']"
+    echo "  -ctn-dir        <dir>   Singularity container dir                               [default: '/fs/ess/PAS0471/containers']"
     echo "                            - This is where any containers used in the workflow will be downloaded to"
     echo "  -work-dir       <dir>   Scratch (work) dir for the workflow                     [default: Nextflow default = 'work']"
     echo "                            - This is where the workflow results will be stored before final results are copied to the specified output dir"
@@ -76,7 +76,7 @@ Load_software() {
 
     # Activate the Nextflow Conda environment
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /fs/project/PAS0471/jelmer/conda/nextflow
+    source activate /fs/ess/PAS0471/jelmer/conda/nextflow
 
     ## Singularity container dir - any downloaded containers will be stored here
     export NXF_SINGULARITY_CACHEDIR="$container_dir"
@@ -154,7 +154,7 @@ seq_type="nuc"          # Specifies if the input FASTA file is "nuc" for nucleot
 batch_size=5            # Run 'batch_size' transcripts at a time
 
 nf_file="systemsgenetics/entapnf"
-container_dir=/fs/project/PAS0471/containers
+container_dir=/fs/ess/PAS0471/containers
 profile="singularity"
 resume=true && resume_arg="-resume"
 ansi_log=false && ansi_log_arg="-ansi-log false"
@@ -415,7 +415,7 @@ date
 # StringDB - https://github.com/SystemsGenetics/EnTAPnf/blob/master/scripts/get_string.sh
     # - Downloaded to /fs/scratch/PAS0471/jelmer/dbs/string
     # - Trying to run bin/index_string.py, but get 'NameError: name 'os' is not defined'
-    # /fs/project/PAS0471/jelmer/assist/2022-04_soumya/workflows/EnTAPnf/bin/index_string.py --links protein.links.full.v11.0.txt --info protein.info.v11.0.txt --out .
+    # /fs/ess/PAS0471/jelmer/assist/2022-04_soumya/workflows/EnTAPnf/bin/index_string.py --links protein.links.full.v11.0.txt --info protein.info.v11.0.txt --out .
 # OrthoDB - https://github.com/SystemsGenetics/EnTAPnf/blob/master/scripts/get_orthodb.sh
     # - Downloaded to /fs/scratch/PAS0471/jelmer/dbs/orthodb
     # - Also ran index_orthodb.py -- Index files are not used?!

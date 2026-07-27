@@ -19,8 +19,8 @@ outdir=$3
 
 ## Software
 module load python/3.6-conda5.2
-NANOPOLISH_ENV=/fs/project/PAS0471/jelmer/conda/nanopolish-0.13.2
-MINIMAP_ENV=/fs/project/PAS0471/jelmer/conda/minimap2-2.24
+NANOPOLISH_ENV=/fs/ess/PAS0471/jelmer/conda/nanopolish-0.13.2
+MINIMAP_ENV=/fs/ess/PAS0471/jelmer/conda/minimap2-2.24
 
 ## Bash strict settings
 #set -euo pipefail # Script stops after nanopolish variants --consensus, not clear why
@@ -95,7 +95,7 @@ echo
 
 
 # ALT - MAP WITH BWA -----------------------------------------------------------
-#BWA_ENV=/fs/project/PAS0471/jelmer/conda/bwa-0.7.17
+#BWA_ENV=/fs/ess/PAS0471/jelmer/conda/bwa-0.7.17
 #source activate "$BWA_ENV"
 #bwa index "$genome_in"
 #bwa mem -x ont2d \

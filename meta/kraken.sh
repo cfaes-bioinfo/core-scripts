@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run Kraken2 to assign taxonomy to sequences in a FASTA/FASTQ/pair of FASTQ file(s)"
-SCRIPT_VERSION="2025-09-19"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -50,7 +50,7 @@ $DESCRIPTION
     
 USAGE / EXAMPLE COMMANDS:
   - Basic usage example:
-      sbatch $0 -i data/S1_R1.fastq.gz -o results/kraken --db /fs/project/PAS0471/jelmer/refdata/kraken/std
+      sbatch $0 -i data/S1_R1.fastq.gz -o results/kraken --db /fs/ess/PAS0471/jelmer/refdata/kraken/std
     
 REQUIRED OPTIONS:
   -i/--infile        <file>  Input sequence file (FASTA, single-end FASTQ, or R1 from paired-end FASTQ)

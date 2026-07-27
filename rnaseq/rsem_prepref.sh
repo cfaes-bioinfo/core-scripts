@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="From a genome nucleotide FASTA and a GFF/GTF file, produce a transcript FASTA file"
-SCRIPT_VERSION="2023-08-14"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -22,9 +22,9 @@ TOOL_DOCS=https://github.com/deweylab/RSEM
 VERSION_COMMAND="rsem-calculate-expression --version"
 
 # Defaults - generics
-env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/rsem-1.3.3
-container_path=
+env_type=container                           # Use a 'conda' env or a Singularity 'container'
+conda_path=
+container_path=oras://community.wave.seqera.io/library/rsem:1.3.3--f0f1e714d347acd5
 container_url=
 dl_container=false
 container_dir="$HOME/containers"

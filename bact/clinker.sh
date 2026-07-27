@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run Clinker to create per-gene alignments and gene cluster figures"
-SCRIPT_VERSION="2023-09-06"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -22,9 +22,9 @@ TOOL_DOCS=https://github.com/gamcil/clinker
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/clinker
-container_path=
+env_type=container                           # Use a 'conda' env or a Singularity 'container'
+conda_path=
+container_path=oras://community.wave.seqera.io/library/clinker:1.33--28a138185bc284b6
 container_url=
 dl_container=false
 container_dir="$HOME/containers"

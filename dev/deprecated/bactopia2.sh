@@ -13,8 +13,8 @@
 # Constants - generic
 DESCRIPTION="Run the Bactopia workflow (up to version 2, there's a separate script for version 3)"
 MODULE=miniconda3/4.12.0-py39
-CONDA=/fs/project/PAS0471/jelmer/conda/bactopia
-SCRIPT_VERSION="1.0"
+CONDA=/fs/ess/PAS0471/jelmer/conda/bactopia
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 SCRIPT_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY=bactopia
@@ -36,7 +36,7 @@ MAX_MEMORY=128                                  # In GB
 # Parameter defaults
 db_dir=data/bactopia                            # Output of the 'bactopia datasets command'
 always_download_db=false                        # Default is to only download if $db_dir doesn't exist
-container_dir=/fs/project/PAS0471/containers
+container_dir=/fs/ess/PAS0471/containers
 profile=singularity
 resume=true && resume_arg="-resume"
 

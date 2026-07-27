@@ -34,8 +34,8 @@ Print_help() {
     echo "DIAMOND REFERENCE DATABASES (ALSO REQUIRED):"
     echo "  To specify DIAMOND database files, specify --db_dir OR pass files as positional arguments."
     echo "  You can use the following pre-built databases:"
-    echo "    - RefSeq Complete:    /fs/project/PAS0471/jelmer/refdata/entap/bin/refseq_complete.dmnd"
-    echo "    - UniProt:            /fs/project/PAS0471/jelmer/refdata/entap/bin/uniprot_sprot.dmnd"
+    echo "    - RefSeq Complete:    /fs/ess/PAS0471/jelmer/refdata/entap/bin/refseq_complete.dmnd"
+    echo "    - UniProt:            /fs/ess/PAS0471/jelmer/refdata/entap/bin/uniprot_sprot.dmnd"
     echo "  --db_dir        <dir>   Directory with DIAMOND database files ('.dmnd')"
     echo
     echo "OTHER KEY OPTIONS:"
@@ -63,7 +63,7 @@ Print_help() {
 Load_software() {
     module load miniconda3/4.12.0-py39
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
-    source activate /fs/project/PAS0471/jelmer/conda/entap-0.10.8
+    source activate /fs/ess/PAS0471/jelmer/conda/entap-0.10.8
 }
 
 # Print version

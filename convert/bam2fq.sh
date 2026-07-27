@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Convert a BAM or CRAM file with paired-end reads into two FASTQ files using 'samtools fastq'"
-SCRIPT_VERSION="2024-01-01"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -23,7 +23,7 @@ VERSION_COMMAND="$TOOL_BINARY --version | head -n2"
 
 # Defaults - generics
 env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/project/PAS0471/jelmer/conda/samtools
+conda_path=/fs/ess/PAS0471/jelmer/conda/samtools
 container_path=
 container_url=
 dl_container=false

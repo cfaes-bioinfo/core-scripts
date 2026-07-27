@@ -14,7 +14,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run Compleasm to evaluate genome assembly completeness (similar to Busco)"
-SCRIPT_VERSION="2025-03-22"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -24,10 +24,10 @@ TOOL_DOCS=https://github.com/huangnengCSU/compleasm
 VERSION_COMMAND="compleasm -v"
 
 # Defaults - generics
-env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/compleasm
+env_type=container                           # Use a 'conda' env or a Singularity 'container'
+conda_path=
+container_url=oras://community.wave.seqera.io/library/compleasm:0.2.9--fcebed8014acdae2
 container_dir="$HOME/containers"
-container_url=
 container_path=
 
 # ==============================================================================

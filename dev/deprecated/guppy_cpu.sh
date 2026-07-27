@@ -135,7 +135,7 @@ Die() {
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Software
-GUPPY_DIR=/fs/project/PAS0471/jelmer/software/guppy-6.4.2 # https://community.nanoporetech.com/downloads
+GUPPY_DIR=/fs/ess/PAS0471/jelmer/software/guppy-6.4.2 # https://community.nanoporetech.com/downloads
 GUPPY_BIN="$GUPPY_DIR"/bin/guppy_basecaller
 module load cuda
 

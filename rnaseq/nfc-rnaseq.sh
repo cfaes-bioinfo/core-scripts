@@ -13,7 +13,7 @@
 # Constants - generic
 DESCRIPTION="Run the Nextflow-core RNAseq pipeline from https://nf-co.re/rnaseq
   with aligner option STAR => Salmon"
-SCRIPT_VERSION="2025-07-12"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY="nextflow run"
@@ -34,7 +34,7 @@ salmon_seqbias=true                                    # Pass the --seqBias opti
 rm_rrna=true                                           # Run SortMeRNA to remove rRNA
 
 # Defaults - infrastructure
-conda_path=/fs/project/PAS0471/jelmer/conda/nextflow   # Conda environment with Nextflow & nf-core tools
+conda_path=/fs/ess/PAS0471/jelmer/conda/nextflow   # Conda environment with Nextflow & nf-core tools
 osc_account=PAS0471                                    # If the script is submitted with another project, this will be updated (line below)
 [[ -n $SLURM_JOB_ACCOUNT ]] && osc_account=$(echo "$SLURM_JOB_ACCOUNT" | tr "[:lower:]" "[:upper:]")
 container_dir=/fs/scratch/"$osc_account"/containers    # The workflow will download containers to this dir

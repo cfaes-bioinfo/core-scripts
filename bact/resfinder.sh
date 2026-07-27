@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run ResFinder to detect AMR genes and point mutations in a bacterial genome assembly"
-SCRIPT_VERSION="2023-07-29"
+SCRIPT_VERSION="2026-07-27"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -22,10 +22,10 @@ TOOL_DOCS=https://bitbucket.org/genomicepidemiology/resfinder
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/resfinder
-container_path=
-container_url=https://depot.galaxyproject.org/singularity/resfinder:4.1.11--hdfd78af_0
+env_type=container                           # Use a 'conda' env or a Singularity 'container'
+container_path=oras://community.wave.seqera.io/library/resfinder:4.7.2--93977212deab6a11
+conda_path=
+container_url=
 dl_container=false
 container_dir="$HOME/containers"
 

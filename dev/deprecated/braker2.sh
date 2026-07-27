@@ -65,7 +65,7 @@ Load_software() {
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     
     # Braker2 conda env which contains everything except GeneMark-EX and ProtHint
-    CONDA_DIR=/fs/project/PAS0471/jelmer/conda/braker2-env
+    CONDA_DIR=/fs/ess/PAS0471/jelmer/conda/braker2-env
     source activate "$CONDA_DIR"
 
     # Remove config file for species, if it exists
@@ -74,13 +74,13 @@ Load_software() {
     
     # GeneMark-EX
     # See https://github.com/Gaius-Augustus/BRAKER#genemark-ex
-    GENEMARK_BASEDIR=/fs/project/PAS0471/jelmer/software/genemark-ex
+    GENEMARK_BASEDIR=/fs/ess/PAS0471/jelmer/software/genemark-ex
     export GENEMARK_PATH="$GENEMARK_BASEDIR"/gmes_linux_64_4
     cp "$GENEMARK_BASEDIR"/gm_key_64 ~/.gm_key
 
     # See https://github.com/Gaius-Augustus/BRAKER#prothint
-    export PROTHINT_PATH=/fs/project/PAS0471/jelmer/software/ProtHint/bin
-    export PYTHON3_PATH=/fs/project/PAS0471/jelmer/conda/braker2-env/bin
+    export PROTHINT_PATH=/fs/ess/PAS0471/jelmer/software/ProtHint/bin
+    export PYTHON3_PATH=/fs/ess/PAS0471/jelmer/conda/braker2-env/bin
 
     set -u
 }
