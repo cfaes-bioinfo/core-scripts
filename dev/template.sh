@@ -15,7 +15,7 @@ set -euo pipefail
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="" #TODO
-SCRIPT_VERSION="2025-03-07" #TODO - UPDATE
+SCRIPT_VERSION="2026-XX-XX" #TODO - UPDATE
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -25,11 +25,11 @@ TOOL_DOCS=              #TODO - URL to the tool's docs website
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=conda                  # Use a 'conda' env or a Singularity 'container'
-conda_path=             #TODO
+env_type=container      # Use a 'conda' env or a Singularity 'container'
 container_url=          #TODO
 container_dir="$HOME/containers"
 container_path=
+conda_path=             #TODO
 
 # Constants - tool parameters
 #TODO
