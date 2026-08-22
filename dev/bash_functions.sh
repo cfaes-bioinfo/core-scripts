@@ -68,6 +68,12 @@ load_conda() {
 # Set up container
 load_container() {
     local dl_container=false url_basename tmp_sif
+
+    # Silence Apptainer's INFO messages (e.g. "gocryptfs not found"), which are
+    # just noise. Warnings and fatal errors are still shown - note that
+    # '--silent' would hide warnings too, so it is deliberately not used.
+    # Run with APPTAINER_QUIET=false to see the INFO messages when debugging.
+    export APPTAINER_QUIET=${APPTAINER_QUIET:-true}
     
     # If no path to a container image file was provided,
     # then build the path based on the URL, and check if the file exists
@@ -316,11 +322,13 @@ report_on_exit() {
         log_time "ERROR: script ${SCRIPT_NAME:-$0} exited with status $exit_status" >&2
         [[ "$exit_status" -eq 137 ]] &&
             echo "NOTE: status 137 = killed by SIGKILL, usually an out-of-memory kill" >&2
-        report_peak_mem >&2
+        # Only meaningful under Slurm: outside it, the cgroup is the whole
+        # login session rather than this job
+        [[ "${IS_SLURM:-false}" == true ]] && report_peak_mem >&2
         check_time_limit >&2
         if [[ "${IS_SLURM:-false}" == true ]]; then
             echo "Slurm job ID: ${SLURM_JOB_ID:-unknown}" >&2
-            echo "For full resource usage once accounting settles, run:  seff ${SLURM_JOB_ID:-<jobid>}" >&2
+            echo "For full resource usage once the job has ended, run:  seff ${SLURM_JOB_ID:-<jobid>}" >&2
         fi
     fi
 }
