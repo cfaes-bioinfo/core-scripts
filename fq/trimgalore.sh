@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run TrimGalore for 1 (single-end) or 2 (paired-end) FASTQ file(s) for one sample"
-SCRIPT_VERSION="2025-01-25"
+SCRIPT_VERSION="2026-08-22"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -23,8 +23,8 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
 env_type=container              # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/trimgalore
-container_url=docker://quay.io/biocontainers/trim-galore:0.6.10--hdfd78af_0
+container_url=oras://community.wave.seqera.io/library/trim-galore:2.3.0--a56e49e832976df4
+conda_path=
 container_dir="$HOME"/containers
 version_only=false
 
