@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Download FASTQ files from SRA/ENA with fastq-dl"
-SCRIPT_VERSION="2025-04-16"
+SCRIPT_VERSION="2026-08-23"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -22,10 +22,10 @@ TOOL_DOCS=https://github.com/rpetit3/fastq-dl
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=conda
-conda_path=/fs/ess/PAS0471/jelmer/conda/fastq-dl
+env_type=container
+container_url=oras://community.wave.seqera.io/library/fastq-dl:4.0.1--13a524e800be31ac
+conda_path=
 container_dir="$HOME/containers"
-container_url=
 container_path=
 
 # Constants - tool parameters
