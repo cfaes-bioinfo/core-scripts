@@ -18,7 +18,7 @@ OSC_MODULE=miniconda3/24.1.2-py310
 
 # Variables that can/should be loaded in the script calling these functions
 # conda_path        - Absolute path to a Conda environment dir
-# container_url     - URL to a container
+# container_url     - URL/URI to a container
 # container_path    - Absolute path to a container .sif file
 # TOOL_BINARY       - The command that calls the focal program 
 # SCRIPT_NAME       - Name of the shell script
@@ -137,37 +137,39 @@ print_version() {
     set -e
 }
 
-# Record how this script was called and which version of it was used
+# Record how this script was called, which version of it was used, and -
+# under Slurm - which job produced the output
+# NOTE: also sets the SLURM_LOG_PATH global, which final_reporting() uses to
+#       copy the Slurm log into the log dir. Do not drop that here.
 log_provenance() {
     local log_dir=$1
     local repo_version
     repo_version=$(git -C "${script_dir:-.}" describe --always --dirty --tags 2>/dev/null) ||
         repo_version=
+
+    # Locate this job's Slurm log, so it can be found (and copied) later
+    # Best-effort: a transient scontrol failure must not kill the job
+    if [[ "${IS_SLURM:-false}" == true ]]; then
+        SLURM_LOG_PATH=$(scontrol show job "$SLURM_JOB_ID" 2>/dev/null |
+                         awk 'match($0, /StdOut=[^[:space:]]+/) {print substr($0, RSTART+7, RLENGTH-7); exit}') ||
+            SLURM_LOG_PATH=
+    fi
+
     {
         echo "# Date:         $(date +'%Y-%m-%d %H:%M:%S')"
         echo "# Host:         $(hostname)"
         echo "# Working dir:  $PWD"
         echo "# Script:       ${script_dir:-.}/${SCRIPT_NAME:-unknown}"
         [[ -n "$repo_version" ]] && echo "# Script repo:  $repo_version"
-        [[ "${IS_SLURM:-false}" == true ]] && echo "# Slurm job:    ${SLURM_JOB_ID:-unknown}"
+        if [[ "${IS_SLURM:-false}" == true ]]; then
+            echo "# Slurm job ID: ${SLURM_JOB_ID:-unknown}"
+            echo "# Slurm job:    ${SLURM_JOB_NAME:-unknown}"
+            echo "# Slurm log:    ${SLURM_LOG_PATH:-unknown}"
+        fi
         echo
         echo "cd $PWD"
         echo "bash ${script_dir:-.}/${SCRIPT_NAME:-unknown} ${all_opts_q:-${all_opts:-}}"
     } > "$log_dir"/command.txt
-}
-
-# Record Slurm job details so the job's log file can be found later
-log_slurm_job() {
-    local log_dir=$1
-    # Best-effort: a transient scontrol failure must not kill the job
-    SLURM_LOG_PATH=$(scontrol show job "$SLURM_JOB_ID" 2>/dev/null |
-                     awk 'match($0, /StdOut=[^[:space:]]+/) {print substr($0, RSTART+7, RLENGTH-7); exit}') || SLURM_LOG_PATH=
-    {
-        echo "Job ID:      $SLURM_JOB_ID"
-        echo "Job name:    ${SLURM_JOB_NAME:-unknown}"
-        echo "Submit dir:  ${SLURM_SUBMIT_DIR:-unknown}"
-        echo "Slurm log:   ${SLURM_LOG_PATH:-unknown}"
-    } > "$log_dir"/slurm_job.txt
 }
 
 # Print SLURM job resource usage info
@@ -245,7 +247,7 @@ die() {
     local error_message=${1:-(no error message provided)}
     local error_args=${2-none}
 
-    log_time "$0: ERROR: $error_message" >&2
+    log_time "$SCRIPT_NAME: ERROR: $error_message" >&2
     log_time "For help, run this script with the '-h' or '--help' option, e.g:" >&2
     echo "bash $SCRIPT_NAME --help" >&2
 

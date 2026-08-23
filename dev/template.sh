@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=1
+#SBATCH --time=1:00:00      # TODO - adjust this and below options based on the tool's needs
+#SBATCH --cpus-per-task=1   
 #SBATCH --mem=4G
-#SBATCH --mail-type=END,FAIL
-#SBATCH --job-name=TODO_THIS_SOFTWARE
+#SBATCH --mail-type=FAIL
+#SBATCH --job-name=         # TODO - Give a short name for this job (no spaces)
 #SBATCH --output=slurm-%x-%j.out
 
 # Strict Bash settings
@@ -14,28 +14,27 @@ set -euo pipefail
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="" #TODO
-SCRIPT_VERSION="2026-XX-XX" #TODO - UPDATE
+DESCRIPTION=""              #TODO - Add a short description of what this script does
+SCRIPT_VERSION="2026-XX-XX" #TODO - Give the correct data
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
-TOOL_BINARY=            #TODO
-TOOL_NAME=              #TODO
-TOOL_DOCS=              #TODO - URL to the tool's docs website
+TOOL_BINARY=                #TODO - Name of the software/tool binary (e.g., 'fastqc', 'bwa', etc.)
+TOOL_NAME=                  #TODO - Short name of the software/tool, for logging purposes
 VERSION_COMMAND="$TOOL_BINARY --version"
 
-# Defaults - generics
-env_type=container      # Use a 'conda' env or a Singularity 'container'
-container_url=          #TODO
-container_dir="$HOME/containers"
-container_path=
-conda_path=             #TODO
+# Defaults - generic
+env_type=container          # 'conda' / 'container' / 'none'
+container_url=              #TODO - URL/URI to download a container from
+conda_path=                 #TODO - Full path to a Conda environment to use
+container_dir="$HOME/containers" # Where to download a container to (if needed)
+container_path=             # Full path to a pre-downloaded container image
 
 # Constants - tool parameters
-#TODO
+#TODO - Add if needed
 
 # Defaults - tool parameters
-#TODO
+#TODO - Add if needed
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -48,32 +47,39 @@ script_help() {
 
 DESCRIPTION:
 $DESCRIPTION
-    
+
 USAGE / EXAMPLE COMMANDS:
   - Basic usage example:
       sbatch $0 -i TODO -o results/TODO
-    
+  - Pass extra options to $TOOL_NAME (note the quoting):
+      sbatch $0 -i TODO -o results/TODO --more_opts \"--some-opt 'a value'\"
+
 REQUIRED OPTIONS:
   -i/--infile         <file>  Input file
   -o/--outdir         <dir>   Output dir (will be created if needed)
-    
+
 OTHER KEY OPTIONS:
   --more_opts         <str>   Quoted string with one or more additional options
                               for $TOOL_NAME
-    
+
+OUTPUT:
+  Alongside the tool's own output, '<outdir>/logs' will contain:
+    command.txt     - The command that was run, plus this script's Git commit
+    versions.txt    - Versions of this script and of $TOOL_NAME
+    shell_env.txt   - The shell environment (credential-like values redacted)
+    conda_env.yml   - The Conda environment (when using Conda)
+    slurm-*.out     - A copy of the Slurm log (when run as a Slurm job)
+
 UTILITY OPTIONS:
   --env_type          <str>   Software environment: 'conda', 'container'        [default: $env_type]
                               (Singularity/Apptainer), or 'none' (tool must
                               already be available in your PATH)
-  --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
+  --container_url     <str>   URL/URI to download a container from              [default: ${container_url:-none}]
   --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
-  --container_path    <file>  Local container image file ('.sif') to use        [default (if any): $container_path]
-  --conda_path        <dir>   Full path to a Conda environment to use           [default (if any): $conda_path]
+  --container_path    <file>  Local container image file ('.sif') to use        [default: ${container_path:-none}]
+  --conda_path        <dir>   Full path to a Conda environment to use           [default: ${conda_path:-none}]
   -h/--help                   Print this help message
   -v/--version                Print script and $TOOL_NAME versions
-    
-TOOL DOCUMENTATION:
-  $TOOL_DOCS
 "
 }
 
@@ -167,9 +173,12 @@ done
 [[ "$env_type" == "container" && -z "$container_url" && -z "$container_path" ]] &&
     die "No container: set 'container_url' in this script or use --container_url/--container_path" "$all_opts"
 
-# Load software
-load_env   # Note: reads the env_type/conda_path/container_* globals, takes no args
-[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
+# Print version info and exit, if requested (this needs the software env loaded)
+if [[ "$version_only" == true ]]; then
+    load_env
+    print_version "$VERSION_COMMAND"
+    exit 0
+fi
 
 # Check options provided to the script
 [[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
@@ -180,14 +189,13 @@ load_env   # Note: reads the env_type/conda_path/container_* globals, takes no a
 check_outdir "$outdir"
 
 # Define outputs based on script parameters
-LOG_DIR="$outdir"/logs
+# NOTE: LOG_DIR is made absolute so that log paths keep resolving if the
+#       script (or the tool) changes the working dir later on
+LOG_DIR=$(realpath -m "$outdir")/logs
 mkdir -p "$LOG_DIR"
 
-# Record how this script was called, for reproducibility
+# Record how this script was called (and, under Slurm, which job ran it)
 log_provenance "$LOG_DIR"
-
-# Record which Slurm job produced this output, so its log can be found later
-[[ "$IS_SLURM" == true ]] && log_slurm_job "$LOG_DIR"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -202,16 +210,18 @@ echo "Output dir:                               $outdir"
 echo "Temp dir (\$TMPDIR):                       ${TMPDIR:-<unset>}"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
-ls -lh "$infile" #TODO
+ls -lh "$infile"
 set_threads "$IS_SLURM"
 [[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
+# Load the software environment
+load_env
+
+# Run the tool
 log_time "Running $TOOL_NAME..."
-# 'eval' so that quoting inside --more_opts is honored;
-# $TOOL_BINARY is deliberately word-split (it may include a container prefix)
 eval runstats "$TOOL_BINARY" \
     --threads "$threads" \
     $more_opts
@@ -222,4 +232,4 @@ eval runstats "$TOOL_BINARY" \
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/* 2>/dev/null ||
     log_time "WARNING: No files found in the output dir $outdir"
-final_reporting   # Note: reads the LOG_DIR global, takes no args
+final_reporting
