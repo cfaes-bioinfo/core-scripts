@@ -44,30 +44,40 @@ script_help() {
 
 DESCRIPTION:
 $DESCRIPTION
-    
+
 USAGE / EXAMPLE COMMANDS:
   - Basic usage example:
       sbatch $0 -i data/sampleA_R1.fastq.gz -o results/fastqc
-    
+  - Pass extra options to $TOOL_NAME (note the quoting):
+      sbatch $0 -i data/sampleA_R1.fastq.gz -o results/fastqc --more_opts \"--nogroup\"
+
 REQUIRED OPTIONS:
   -i/--infile         <file>  Input FASTQ file
   -o/--outdir         <dir>   Output dir (will be created if needed)
-    
+
 OTHER KEY OPTIONS:
   --more_opts         <str>   Quoted string with one or more additional options
                               for $TOOL_NAME
-    
+
+OUTPUT:
+  Alongside the tool's own output, '<outdir>/logs' will contain:
+    command.txt     - The command that was run, plus this script's Git commit
+    versions.txt    - Versions of this script and of $TOOL_NAME
+    shell_env.txt   - The shell environment (credential-like values redacted)
+    conda_env.yml   - The Conda environment (when using Conda)
+    slurm-*.out     - A copy of the Slurm log (when run as a Slurm job)
+
 UTILITY OPTIONS:
   --env_type          <str>   Software environment: 'conda', 'container'        [default: $env_type]
                               (Singularity/Apptainer), or 'none' (tool must
                               already be available in your PATH)
-  --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
+  --container_url     <str>   URL/URI to download a container from              [default: ${container_url:-none}]
   --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
-  --container_path    <file>  Local container image file ('.sif') to use        [default (if any): $container_path]
-  --conda_path        <dir>   Full path to a Conda environment to use           [default (if any): $conda_path]
+  --container_path    <file>  Local container image file ('.sif') to use        [default: ${container_path:-none}]
+  --conda_path        <dir>   Full path to a Conda environment to use           [default: ${conda_path:-none}]
   -h/--help                   Print this help message
   -v/--version                Print script and $TOOL_NAME versions
-    
+
 TOOL DOCUMENTATION:
   $TOOL_DOCS
 "
@@ -163,9 +173,12 @@ done
 [[ "$env_type" == "container" && -z "$container_url" && -z "$container_path" ]] &&
     die "No container: set 'container_url' in this script or use --container_url/--container_path" "$all_opts"
 
-# Load software
-load_env   # Note: reads the env_type/conda_path/container_* globals, takes no args
-[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
+# Print version info and exit, if requested (this needs the software env loaded)
+if [[ "$version_only" == true ]]; then
+    load_env
+    print_version "$VERSION_COMMAND"
+    exit 0
+fi
 
 # Check options provided to the script
 [[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
@@ -179,11 +192,8 @@ check_outdir "$outdir"
 LOG_DIR="$outdir"/logs
 mkdir -p "$LOG_DIR"
 
-# Record how this script was called, for reproducibility
+# Record how this script was called (and, under Slurm, which job ran it)
 log_provenance "$LOG_DIR"
-
-# Record which Slurm job produced this output, so its log can be found later
-[[ "$IS_SLURM" == true ]] && log_slurm_job "$LOG_DIR"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -205,6 +215,10 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 #                               RUN
 # ==============================================================================
+# Load the software environment - done here rather than earlier so that its
+# messages appear after the summary of options above
+load_env   # Note: reads the env_type/conda_path/container_* globals, takes no args
+
 log_time "Running $TOOL_NAME..."
 # 'eval' so that quoting inside --more_opts is honored, and '%q' so that paths
 # containing spaces survive it. $TOOL_BINARY is deliberately word-split
