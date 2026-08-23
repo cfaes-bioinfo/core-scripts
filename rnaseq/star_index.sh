@@ -12,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Index a genome or transcriptome with STAR"
-SCRIPT_VERSION="2026-05-21"
+SCRIPT_VERSION="2026-08-23"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -23,10 +23,11 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
 env_type=container
-conda_path=
 container_dir="$HOME/containers"
+# Container with STAR v. 2.7.11b and samtools v. 1.23.1
 container_url=oras://community.wave.seqera.io/library/samtools_star:952fa4513a08d418
 container_path=
+conda_path=
 
 # Defaults - tool parameters
 index_size="auto"
@@ -53,21 +54,21 @@ REQUIRED OPTIONS:
   -o/--outdir       <dir>   Output dir (will be created if needed)
 
 OTHER KEY OPTIONS:
-  --annot           <file>  Reference annotation (GFF/GFF3/GTF) file (GTF preferred)
-                                                                        [default: none, but recommended]
-  --index_size      <int>   Index size                                  [default: $index_size => auto from genome size]
-  --read_len        <int>   Read length (only applies with --annot)     [default: unset => overhang 99]
+  --annot           <file>  Reference annotation (GFF/GFF3/GTF) file
+                             (GTF preferred)                                    [default: none, but recommended]
+  --index_size      <int>   Index size                                          [default: $index_size => auto from genome size]
+  --read_len        <int>   Read length (only applies with --annot)             [default: unset => overhang 99]
                             Determines the overhang length (read_len - 1).
   --more_opts       <str>   Quoted string with one or more additional options
                             for $TOOL_NAME
 
 UTILITY OPTIONS:
-  --env_type        <str>   Whether to use a Singularity/Apptainer container  [default: $env_type]
+  --env_type        <str>   Whether to use a Singularity/Apptainer container   [default: $env_type]
                             ('container') or a Conda environment ('conda')
-  --container_url   <str>   URL to download a container from                  [default (if any): $container_url]
-  --container_dir   <str>   Dir to download a container to                    [default: $container_dir]
-  --container_path  <file>  Local container image file ('.sif') to use        [default (if any): $container_path]
-  --conda_path      <dir>   Full path to a Conda environment to use           [default (if any): $conda_path]
+  --container_url   <str>   URL to download a container from                   [default (if any): $container_url]
+  --container_dir   <str>   Dir to download a container to                     [default: $container_dir]
+  --container_path  <file>  Local container image file ('.sif') to use         [default (if any): $container_path]
+  --conda_path      <dir>   Full path to a Conda environment to use            [default (if any): $conda_path]
   -h/--help                 Print this help message
   -v/--version              Print script and $TOOL_NAME versions
 

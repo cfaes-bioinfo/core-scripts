@@ -22,9 +22,9 @@ TOOL_DOCS=https://github.com/torognes/vsearch
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/vsearch
-container_url=
+env_type=container                           # Use a 'conda' env or a Singularity 'container'
+conda_path=
+container_url=oras://community.wave.seqera.io/library/vsearch:2.31.0--8c8b68ab67b5bcf0
 container_dir="$HOME/containers"
 
 # ==============================================================================

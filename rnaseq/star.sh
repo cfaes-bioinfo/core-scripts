@@ -26,6 +26,7 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 env_type=container
 conda_path=
 container_dir="$HOME/containers"
+# Container with STAR v. 2.7.11b and samtools v. 1.23.1
 container_url=oras://community.wave.seqera.io/library/samtools_star:952fa4513a08d418
 container_path=
 

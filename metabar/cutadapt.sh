@@ -14,7 +14,7 @@
 DESCRIPTION="Run Cutadapt to remove (metabarcoding) PRIMERS for one FASTQ file
 (single-end) or a pair of FASTQ files (paired-end).
 The script will also compute and use the reverse complements of the specified primers."
-SCRIPT_VERSION="2025-09-02"
+SCRIPT_VERSION="2026-08-22"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 TOOL_BINARY=cutadapt
@@ -23,8 +23,8 @@ TOOL_DOCS=https://cutadapt.readthedocs.io/en/stable
 VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
-env_type=conda                     # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/conda/cutadapt_v5.1
+env_type=container                     # Use a 'conda' env or a Singularity 'container'
+conda_path=oras://community.wave.seqera.io/library/cutadapt:5.2--7e96173061760bf9
 container_dir="$HOME/containers"
 container_url=
 container_path=

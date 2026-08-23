@@ -13,7 +13,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Annotate a prokaryotic genome assembly with Prokka"
-SCRIPT_VERSION="2026-07-27"
+SCRIPT_VERSION="2026-08-23"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -24,9 +24,9 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 
 # Defaults - generics
 env_type=container                      # 'conda' or 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/prokka
 container_path=/fs/ess/PAS0471/containers/prokka:1.14.6--pl5321hdfd78af_4
 container_url=https://depot.galaxyproject.org/singularity/prokka:1.14.6--pl5321hdfd78af_4
+conda_path=
 dl_container=false
 container_dir="$HOME/containers"
 
