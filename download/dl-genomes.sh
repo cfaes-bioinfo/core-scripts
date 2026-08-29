@@ -5,14 +5,17 @@
 #SBATCH --mem=4G
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name=dl_genomes
-#SBATCH --output=slurm-dl-genomes-%j.out
+#SBATCH --output=slurm-%x-%j.out
+
+# Strict Bash settings
+set -euo pipefail
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Download genomes (and associated proteomes, annotations, etc) and associated metadata with the NCBI datasets tool"
-SCRIPT_VERSION="2026-07-27"
+SCRIPT_VERSION="2026-08-25"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -101,6 +104,14 @@ OTHER KEY OPTIONS:
   --more_opts         <str>   Quoted string with one or more additional options
                               for $TOOL_NAME.
     
+OUTPUT:
+  Alongside the tool's own output, '<outdir>/logs' will contain:
+    command.txt     - The command that was run, plus this script's Git commit
+    versions.txt    - Versions of this script and of $TOOL_NAME
+    shell_env.txt   - The shell environment (credential-like values redacted)
+    conda_env.yml   - The Conda environment (when using Conda)
+    slurm-*.out     - A copy of the Slurm log (when run as a Slurm job)
+
 UTILITY OPTIONS:
   --env_type          <str>   Whether to use a Singularity/Apptainer container  [default: $env_type]
                               ('container') or a Conda environment ('conda') 
@@ -118,8 +129,10 @@ TOOL DOCUMENTATION:
 
 # Function to source the script with Bash functions
 source_function_script() {
+    local is_slurm=${1:-false}
+
     # Determine the location of this script, and based on that, the function script
-    if [[ "$IS_SLURM" == true ]]; then
+    if [[ "$is_slurm" == true ]]; then
         script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
         script_dir=$(dirname "$script_path")
         SCRIPT_NAME=$(basename "$script_path")
@@ -131,20 +144,38 @@ source_function_script() {
     function_script_path="$script_dir"/../dev/"$function_script_name"
 
     # Download the function script if needed, then source it
-    if [[ -f "$function_script_path" ]]; then
+    if [[ -s "$function_script_path" ]]; then
         source "$function_script_path"
     else
-        if [[ ! -f "$function_script_name" ]]; then
+        if [[ ! -s "$function_script_name" ]]; then
             echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
-            wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script_name"
+            # Download to a temp file, then move into place, so that concurrent
+            # jobs can never source a half-written file
+            tmp_script=$(mktemp "$function_script_name".XXXXXX)
+            if ! wget -q "$FUNCTION_SCRIPT_URL" -O "$tmp_script"; then
+                rm -f "$tmp_script"
+                echo "ERROR: Failed to download $FUNCTION_SCRIPT_URL" >&2
+                exit 1
+            fi
+            mv -f "$tmp_script" "$function_script_name"
         fi
         source "$function_script_name"
+    fi
+
+    # Make sure the functions were really loaded
+    if ! declare -F log_time check_val >/dev/null; then
+        echo "ERROR: Sourced $function_script_name but its functions are missing" >&2
+        echo "       (an outdated copy may be cached - try deleting it)" >&2
+        exit 1
     fi
 }
 
 # Check if this is a SLURM job, then load the Bash functions
-if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
-source_function_script $IS_SLURM
+if [[ -z "${SLURM_JOB_ID:-}" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script "$IS_SLURM"
+
+# Report clearly if this script exits with a non-zero status
+trap report_on_exit EXIT
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
@@ -159,24 +190,25 @@ more_opts=
 
 # Parse command-line options
 all_opts="$*"
-while [ "$1" != "" ]; do
+all_opts_q=$(printf '%q ' "$@")   # Shell-quoted, so it can be re-run exactly
+while [[ $# -gt 0 ]]; do
     case "$1" in
-        -o | --outdir )         shift && outdir=$1 ;;
-        -t | --taxon )          shift && taxon=$1 ;;
-        -a | --accession_file ) shift && accession_file=$1 ;;
-        -A | --accession )      shift && accession=$1 ;;
-        --include )             shift && include=$1 ;;
-        --assembly_version )    shift && assembly_version=$1 ;;
-        --assembly_source )     shift && assembly_source=$1 ;;
+        -o | --outdir )         check_val "$1" "${2:-}"; shift; outdir=$1 ;;
+        -t | --taxon )          check_val "$1" "${2:-}"; shift; taxon=$1 ;;
+        -a | --accession_file ) check_val "$1" "${2:-}"; shift; accession_file=$1 ;;
+        -A | --accession )      check_val "$1" "${2:-}"; shift; accession=$1 ;;
+        --include )             check_val "$1" "${2:-}"; shift; include=$1 ;;
+        --assembly_version )    check_val "$1" "${2:-}"; shift; assembly_version=$1 ;;
+        --assembly_source )     check_val "$1" "${2:-}"; shift; assembly_source=$1 ;;
         --ref_only )            ref_only=true ;;
-        --meta_fields )         shift && meta_fields=$1 ;;
+        --meta_fields )         check_val "$1" "${2:-}" lax; shift; meta_fields=$1 ;;
         --as_is )               move_output=false ;;
         --meta_only )           meta_only=true ;;
-        --env_type )            shift && env_type=$1 ;;
-        --conda_path )          shift && conda_path=$1 ;;
-        --container_dir )       shift && container_dir=$1 ;;
-        --container_url )       shift && container_url=$1 ;;
-        --container_path )      shift && container_path=$1 ;;
+        --env_type )            check_val "$1" "${2:-}"; shift; env_type=$1 ;;
+        --conda_path )          check_val "$1" "${2:-}"; shift; conda_path=$1 ;;
+        --container_dir )       check_val "$1" "${2:-}"; shift; container_dir=$1 ;;
+        --container_url )       check_val "$1" "${2:-}"; shift; container_url=$1 ;;
+        --container_path )      check_val "$1" "${2:-}"; shift; container_path=$1 ;;
         -h | --help )           script_help; exit 0 ;;
         -v | --version)         version_only=true ;;
         * )                     die "Invalid option $1" "$all_opts" ;;
@@ -187,21 +219,39 @@ done
 # ==============================================================================
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
-# Strict Bash settings
-set -euo pipefail
+# Check that this script's TODOs have been filled in
+# NOTE: no TOOL_BINARY check here - in this script TOOL_BINARY is deliberately
+#       empty, and only ever holds the container prefix (the 'datasets' and
+#       'dataformat' subcommands are appended at each call site)
+[[ "$env_type" == "conda" && -z "$conda_path" ]] &&
+    die "No Conda env: set 'conda_path' in this script or use --conda_path" "$all_opts"
+[[ "$env_type" == "container" && -z "$container_url" && -z "$container_path" ]] &&
+    die "No container: set 'container_url' in this script or use --container_url/--container_path" "$all_opts"
 
-# Load software
-load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$container_url"
-echo "$TOOL_BINARY"
 export NCBI_API_KEY=34618c91021ccd7f17429b650a087b585f08
-[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
+
+# Print version info and exit, if requested (this needs the software env loaded)
+if [[ "$version_only" == true ]]; then
+    load_env
+    print_version "$VERSION_COMMAND"
+    exit 0
+fi
 
 # Check options provided to the script
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
 
+# Warn if the output dir already holds results from a previous run
+check_outdir "$outdir"
+
 # Define outputs based on script parameters
 [[ ! "$outdir" =~ ^/ ]] && outdir="$PWD"/"$outdir"       # Make absolute because we will move into the outdir
-LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+# NOTE: LOG_DIR is made absolute so that log paths keep resolving if the
+#       script (or the tool) changes the working dir later on
+LOG_DIR=$(realpath -m "$outdir")/logs
+mkdir -p "$LOG_DIR"
+
+# Record how this script was called (and, under Slurm, which job ran it)
+log_provenance "$LOG_DIR"
 meta_dir="$outdir"/metadata && mkdir -p "$meta_dir"
 meta_all="$meta_dir"/meta_all.tsv
 meta_sel="$meta_dir"/meta_sel.tsv
@@ -321,6 +371,9 @@ dl_genomes() {
 # ==============================================================================
 #                               RUN
 # ==============================================================================
+# Load the software environment
+load_env
+
 # Move into the output dir
 cd "$outdir" || exit 1
 
@@ -335,4 +388,4 @@ get_meta
 # ==============================================================================
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/*
-final_reporting "$LOG_DIR"
+final_reporting
