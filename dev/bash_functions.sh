@@ -275,7 +275,9 @@ check_val() {
 check_outdir() {
     local outdir=$1 existing
     [[ -d "$outdir" ]] || return 0
-    existing=$(find "$outdir" -mindepth 1 -maxdepth 1 -not -name logs 2>/dev/null | head -1)
+    # '|| true': with many entries, 'find' can get SIGPIPE once 'head -1' exits after
+    # its first line, which would otherwise abort the whole script under pipefail+errexit
+    existing=$(find "$outdir" -mindepth 1 -maxdepth 1 -not -name logs 2>/dev/null | head -1) || true
     [[ -n "$existing" ]] &&
         log_time "WARNING: output dir $outdir already contains files - results may be mixed with a previous run"
     return 0

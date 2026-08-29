@@ -26,9 +26,9 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 # Defaults - generic
 env_type=container          # 'conda' / 'container' / 'none'
 container_url=              #TODO - URL/URI to download a container from
-conda_path=                 #TODO - Full path to a Conda environment to use
 container_dir="$HOME/containers" # Where to download a container to (if needed)
 container_path=             # Full path to a pre-downloaded container image
+conda_path=                 #TODO - Full path to a Conda environment to use
 
 # Constants - tool parameters
 #TODO - Add if needed
@@ -166,7 +166,7 @@ done
 # ==============================================================================
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
-# Check that this script's TODOs have been filled in
+# Check software env
 [[ -z "$TOOL_BINARY" ]] && die "TOOL_BINARY has not been set in this script"
 [[ "$env_type" == "conda" && -z "$conda_path" ]] &&
     die "No Conda env: set 'conda_path' in this script or use --conda_path" "$all_opts"
