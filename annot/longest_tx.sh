@@ -2,7 +2,10 @@
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
 #SBATCH --job-name=longest_tx
-#SBATCH --output=slurm-longest_tx-%j.out
+#SBATCH --output=slurm-%x-%j.out
+
+# Strict Bash settings
+set -euo pipefail
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
@@ -14,20 +17,21 @@ DESCRIPTION="Create a longest-transcript/isoform proteome FASTA.
   IDed by .t1/.p1-style suffices
 - If multiple isoforms have the same length, the first one is chosen
 "
-SCRIPT_VERSION="2025-03-22"
+SCRIPT_VERSION="2026-08-29"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
+TOOL_BINARY=seqkit
 TOOL_NAME=seqkit
 VERSION_COMMAND="seqkit | sed -n '3p'"
 export LC_ALL=C                     # Locale for sorting
 
 # Defaults - generics
-env_type=conda
-conda_path=/fs/ess/PAS0471/jelmer/conda/seqkit
+env_type=container
+container_url=oras://community.wave.seqera.io/library/seqkit:2.13.0--2d7ca0a01459540d
 container_dir="$HOME/containers"
-container_url=
 container_path=
+conda_path=
 
 # Defaults - tool parameters
 keep_intermed=false                 # Remove intermediate files
@@ -59,6 +63,14 @@ OTHER KEY OPTIONS:
   --gtf               <file>  Input annotation file in GTF format
   --keep_intermed             Keep intermediate files                           [default: remove]
     
+OUTPUT:
+  Alongside the tool's own output, '<outdir>/logs' will contain:
+    command.txt     - The command that was run, plus this script's Git commit
+    versions.txt    - Versions of this script and of $TOOL_NAME
+    shell_env.txt   - The shell environment (credential-like values redacted)
+    conda_env.yml   - The Conda environment (when using Conda)
+    slurm-*.out     - A copy of the Slurm log (when run as a Slurm job)
+
 UTILITY OPTIONS:
   NOTE: The software used in this script is Seqkit (https://bioinf.shenwei.me/seqkit)
   --env_type          <str>   Use a Singularity container ('container')         [default: $env_type]
@@ -74,8 +86,10 @@ UTILITY OPTIONS:
 
 # Function to source the script with Bash functions
 source_function_script() {
+    local is_slurm=${1:-false}
+
     # Determine the location of this script, and based on that, the function script
-    if [[ "$IS_SLURM" == true ]]; then
+    if [[ "$is_slurm" == true ]]; then
         script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
         script_dir=$(dirname "$script_path")
         SCRIPT_NAME=$(basename "$script_path")
@@ -83,19 +97,42 @@ source_function_script() {
         script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
         SCRIPT_NAME=$(basename "$0")
     fi
-    function_script=$(realpath "$script_dir"/../dev/"$(basename "$FUNCTION_SCRIPT_URL")")
+    function_script_name="$(basename "$FUNCTION_SCRIPT_URL")"
+    function_script_path="$script_dir"/../dev/"$function_script_name"
+
     # Download the function script if needed, then source it
-    if [[ ! -f "$function_script" ]]; then
-        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
-        function_script=$(basename "$FUNCTION_SCRIPT_URL")
-        wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script"
+    if [[ -s "$function_script_path" ]]; then
+        source "$function_script_path"
+    else
+        if [[ ! -s "$function_script_name" ]]; then
+            echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+            # Download to a temp file, then move into place, so that concurrent
+            # jobs can never source a half-written file
+            tmp_script=$(mktemp "$function_script_name".XXXXXX)
+            if ! wget -q "$FUNCTION_SCRIPT_URL" -O "$tmp_script"; then
+                rm -f "$tmp_script"
+                echo "ERROR: Failed to download $FUNCTION_SCRIPT_URL" >&2
+                exit 1
+            fi
+            mv -f "$tmp_script" "$function_script_name"
+        fi
+        source "$function_script_name"
     fi
-    source "$function_script"
+
+    # Make sure the functions were really loaded
+    if ! declare -F log_time check_val >/dev/null; then
+        echo "ERROR: Sourced $function_script_name but its functions are missing" >&2
+        echo "       (an outdated copy may be cached - try deleting it)" >&2
+        exit 1
+    fi
 }
 
 # Check if this is a SLURM job, then load the Bash functions
-if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
-source_function_script
+if [[ -z "${SLURM_JOB_ID:-}" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script "$IS_SLURM"
+
+# Report clearly if this script exits with a non-zero status
+trap report_on_exit EXIT
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
@@ -108,17 +145,18 @@ outdir=
 
 # Parse command-line args
 all_opts="$*"
-while [ "$1" != "" ]; do
+all_opts_q=$(printf '%q ' "$@")   # Shell-quoted, so it can be re-run exactly
+while [[ $# -gt 0 ]]; do
     case "$1" in
-        -i | --faa )        shift && infile=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
-        --gtf )             shift && gtf=$1 ;;
+        -i | --faa )        check_val "$1" "${2:-}"; shift; infile=$1 ;;
+        -o | --outdir )     check_val "$1" "${2:-}"; shift; outdir=$1 ;;
+        --gtf )             check_val "$1" "${2:-}"; shift; gtf=$1 ;;
         --keep_intermed )   keep_intermed=true ;;
-        --env_type )        shift && env_type=$1 ;;
-        --conda_path )      shift && conda_path=$1 ;;
-        --container_dir )   shift && container_dir=$1 ;;
-        --container_url )   shift && container_url=$1 ;;
-        --container_path )  shift && container_path=$1 ;;
+        --env_type )        check_val "$1" "${2:-}"; shift; env_type=$1 ;;
+        --conda_path )      check_val "$1" "${2:-}"; shift; conda_path=$1 ;;
+        --container_dir )   check_val "$1" "${2:-}"; shift; container_dir=$1 ;;
+        --container_url )   check_val "$1" "${2:-}"; shift; container_url=$1 ;;
+        --container_path )  check_val "$1" "${2:-}"; shift; container_path=$1 ;;
         -h | --help )       script_help; exit 0 ;;
         -v | --version )    version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
@@ -129,12 +167,19 @@ done
 # ==============================================================================
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
-# Strict Bash settings
-set -euo pipefail
+# Check software env
+[[ -z "$TOOL_BINARY" ]] && die "TOOL_BINARY has not been set in this script"
+[[ "$env_type" == "conda" && -z "$conda_path" ]] &&
+    die "No Conda env: set 'conda_path' in this script or use --conda_path" "$all_opts"
+[[ "$env_type" == "container" && -z "$container_url" && -z "$container_path" ]] &&
+    die "No container: set 'container_url' in this script or use --container_url/--container_path" "$all_opts"
 
-# Load software
-load_env "$conda_path"
-[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
+# Print version info and exit, if requested (this needs the software env loaded)
+if [[ "$version_only" == true ]]; then
+    load_env
+    print_version "$VERSION_COMMAND"
+    exit 0
+fi
 
 # Check options provided to the script
 [[ -z "$infile" ]] && die "No input FASTA file specified, do so with -i/--faa" "$all_opts"
@@ -142,8 +187,17 @@ load_env "$conda_path"
 [[ ! -f "$infile" ]] && die "Input FASTA file $infile does not exist"
 [[ -n "$gtf" && ! -f "$gtf" ]] && die "Input GTF file $gtf does not exist"
 
+# Warn if the output dir already holds results from a previous run
+check_outdir "$outdir"
+
 # Further processing
-LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+# NOTE: LOG_DIR is made absolute so that log paths keep resolving if the
+#       script (or the tool) changes the working dir later on
+LOG_DIR=$(realpath -m "$outdir")/logs
+mkdir -p "$LOG_DIR"
+
+# Record how this script was called (and, under Slurm, which job ran it)
+log_provenance "$LOG_DIR"
 indir=$(dirname "$infile")
 [[ "$indir" == "$outdir" ]] && die "Input dir can't be the same as the output dir ($indir)"
 
@@ -171,10 +225,13 @@ ls -lh "$infile"
 # ==============================================================================
 #                               MAIN
 # ==============================================================================
+# Load the software environment
+load_env
+
 # Create a table with the length of each isoform
 log_time "Getting the isoform lengths..."
 awk '{print $1}' "$infile" |
-    seqkit fx2tab --length --name |
+    ${CONTAINER_PREFIX:-} seqkit fx2tab --length --name |
     sort -k1,1 > "$iso_lens"
 
 # Create a gene to isoform ID lookup table
@@ -212,7 +269,7 @@ join -t$'\t' -1 2 -2 1 "$gene2iso" "$iso_lens" |
 # Create the final output file, a protein FASTA containing only the longest
 # isoform for each gene
 log_time "Extracting the longest isoforms..."
-seqkit grep -f "$longest_iso_ids" "$infile" > "$outfile"
+${CONTAINER_PREFIX:-} seqkit grep -f "$longest_iso_ids" "$infile" > "$outfile"
 
 # Report
 n_iso=$(cut -f2 "$gene2iso" | sort -u | wc -l)
@@ -244,4 +301,4 @@ fi
 log_time "Listing the output file(s):"
 [[ "$keep_intermed" == false ]] && ls -lh "$outfile"
 [[ "$keep_intermed" == true ]] && ls -lh "$outfile" "$gene2iso" "$iso_lens" "$longest_iso_ids"
-final_reporting "$LOG_DIR"
+final_reporting
