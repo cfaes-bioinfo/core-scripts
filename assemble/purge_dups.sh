@@ -149,7 +149,11 @@ file_ext=$(basename "$assembly" | sed -E 's/.*(.fasta|.fa|.fna)$/\1/')
 genome_id=$(basename "$assembly" "$file_ext")
 assembly=$(realpath "$assembly")
 reads=$(realpath "$reads")
-BIN_DIR="$conda_path"/bin
+if [[ "$env_type" == "container" ]]; then
+    BIN_DIR=/usr/local/bin    # Where the purge_dups binaries live inside the Biocontainer
+else
+    BIN_DIR="$conda_path"/bin
+fi
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -178,10 +182,14 @@ ls -1 "$reads" > reads.fofn
 if [[ -z "$config" ]]; then
     log_time "Now Preparing the config file..."
     config="$outdir"/config.json
-    runstats pd_config.py \
+    runstats $CONTAINER_PREFIX pd_config.py \
         --name "$config" \
         "$assembly" \
         reads.fofn
+
+    # Disable the BUSCO step: the purge_dups Biocontainer doesn't include BUSCO,
+    # so this step always fails with exit code 127 (BUSCO is run separately elsewhere)
+    jq '.busco.skip = 1' "$config" > "$config".tmp && mv "$config".tmp "$config"
 fi
 log_time "Showing the contents of the config file..."
 cat "$config"
@@ -197,7 +205,7 @@ runstats $TOOL_BINARY \
     "$genome_id"
 
 log_time "Copying the output file:"
-cp -v "$genome_id"/seqs/flye_dorado_100x.purged.fa "$outfile"
+cp -v "$genome_id"/seqs/"$genome_id".purged.fa "$outfile"
 
 # Check in- vs output
 log_time "Number of contigs in the input file: $(grep -c ">" "$assembly")"
