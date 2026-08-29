@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=1:00:00
+#SBATCH --time=5:00:00
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=48G
 #SBATCH --mail-type=FAIL
