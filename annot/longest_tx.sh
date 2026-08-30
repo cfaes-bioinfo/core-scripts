@@ -12,7 +12,8 @@ set -euo pipefail
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Create a longest-transcript/isoform proteome FASTA.
-- Works with matching proteome FASTA and GTF files
+- Works with a matching proteome FASTA and an annotation file in GTF or GFF3
+  format (the format is auto-detected)
 - Also works with proteome FASTA files only, if transcripts/isoforms are
   IDed by .t1/.p1-style suffices
 - If multiple isoforms have the same length, the first one is chosen
@@ -53,6 +54,7 @@ $DESCRIPTION
 USAGE / EXAMPLE COMMANDS:
   - Basic usage example:
       sbatch $0 -i my.faa --gtf my.gtf -o results/longest_iso
+      sbatch $0 -i my.faa --gff my.gff3 -o results/longest_iso
       sbatch $0 -i my.faa -o results/longest_iso
     
 REQUIRED OPTIONS:
@@ -60,7 +62,16 @@ REQUIRED OPTIONS:
   -o/--outdir         <dir>   Output dir (will be created if needed)
     
 OTHER KEY OPTIONS:
-  --gtf               <file>  Input annotation file in GTF format
+  --gtf/--gff         <file>  Input annotation file in GTF or GFF3 format.
+                              Both flags do the same thing: the format is
+                              auto-detected from the CDS attribute column.
+                              GTF needs 'gene_id' and 'protein_id' attributes;
+                              GFF3 needs CDS 'Parent' attributes plus
+                              mRNA/transcript 'ID'+'Parent'. In GFF3, the
+                              protein ID is taken from the CDS 'protein_id'
+                              attribute if present, else from the CDS 'Parent'
+                              (i.e. the transcript ID, which is what gffread
+                              writes into its protein FASTA headers).
   --keep_intermed             Keep intermediate files                           [default: remove]
     
 OUTPUT:
@@ -150,7 +161,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         -i | --faa )        check_val "$1" "${2:-}"; shift; infile=$1 ;;
         -o | --outdir )     check_val "$1" "${2:-}"; shift; outdir=$1 ;;
-        --gtf )             check_val "$1" "${2:-}"; shift; gtf=$1 ;;
+        --gtf | --gff | --gff3 ) check_val "$1" "${2:-}"; shift; gtf=$1 ;;
         --keep_intermed )   keep_intermed=true ;;
         --env_type )        check_val "$1" "${2:-}"; shift; env_type=$1 ;;
         --conda_path )      check_val "$1" "${2:-}"; shift; conda_path=$1 ;;
@@ -185,7 +196,7 @@ fi
 [[ -z "$infile" ]] && die "No input FASTA file specified, do so with -i/--faa" "$all_opts"
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
 [[ ! -f "$infile" ]] && die "Input FASTA file $infile does not exist"
-[[ -n "$gtf" && ! -f "$gtf" ]] && die "Input GTF file $gtf does not exist"
+[[ -n "$gtf" && ! -f "$gtf" ]] && die "Input annotation file $gtf does not exist"
 
 # Warn if the output dir already holds results from a previous run
 check_outdir "$outdir"
@@ -216,7 +227,7 @@ echo "==========================================================================
 echo "All options passed to this script:        $all_opts"
 echo "Output dir:                               $outdir"
 echo "Input FASTA file:                         $infile"
-[[ -n "$gtf" ]] && echo "Input GTF file:                           $gtf"
+[[ -n "$gtf" ]] && echo "Input annotation file:                    $gtf"
 log_time "Listing the input file(s):"
 ls -lh "$infile" 
 [[ -n "$gtf" ]] && ls -lh "$gtf" 
@@ -236,16 +247,48 @@ awk '{print $1}' "$infile" |
 
 # Create a gene to isoform ID lookup table
 if [[ -n "$gtf" ]]; then
-    # Use a GTF file to ID genes and proteins #TODO also allow for transcript_id
-    log_time "Creating a gene2isoform lookup file using the GTF file..."
-    grep -v "^#" "$gtf" |
-        awk '$3 == "CDS"' |
-        sed -E 's/.*gene_id "([^"]+)"; .*protein_id "([^;]+)";.*/\1\t\2/' |
-        sort -u |
-        sort -t$'\t' -k2,2 > "$gene2iso"
-    
-    n_genes_gtf=$(grep -v "^#" "$gtf" | awk '$3 == "gene"' | wc -l)
-    log_time "Total number of genes in the GTF file quantified by counting
+    # Auto-detect the annotation format from the attribute column of CDS lines.
+    # awk stops by itself after 100 CDS lines: piping into 'head' would kill it
+    # with SIGPIPE, and under 'set -o pipefail' that fails the whole test.
+    cds_sample=$(awk -F'\t' '!/^#/ && $3 == "CDS" { print; n++ } n >= 100 { exit }' "$gtf")
+    [[ -z "$cds_sample" ]] && die "No CDS lines found in $gtf - cannot build a
+    gene-to-isoform table from it"
+
+    if grep -q 'gene_id "' <<< "$cds_sample"; then
+        annot_format=GTF
+    elif grep -q "Parent=" <<< "$cds_sample"; then
+        annot_format=GFF3
+    else
+        die "Cannot tell whether $gtf is GTF or GFF3: its CDS lines have neither
+    a 'gene_id \"...\"' attribute (GTF) nor a 'Parent=' attribute (GFF3)"
+    fi
+    log_time "Detected annotation format: $annot_format"
+
+    log_time "Creating a gene2isoform lookup file using the $annot_format file..."
+    if [[ "$annot_format" == "GTF" ]]; then
+        # GTF: gene and protein IDs are both on the CDS line
+        grep -v "^#" "$gtf" |
+            awk -F'\t' '$3 == "CDS"' |
+            sed -E 's/.*gene_id "([^"]+)"; .*protein_id "([^;]+)";.*/\1\t\2/' |
+            sort -u |
+            sort -t$'\t' -k2,2 > "$gene2iso"
+    else
+        # GFF3: the CDS line only points at its transcript, so the file is read
+        # twice - see the header of gff3-gene2iso.awk
+        gene2iso_awk="$script_dir"/gff3-gene2iso.awk
+        [[ ! -f "$gene2iso_awk" ]] &&
+            die "Cannot find $gene2iso_awk - it should sit next to this script"
+        awk -f "$gene2iso_awk" "$gtf" "$gtf" |
+            sort -u |
+            sort -t$'\t' -k2,2 > "$gene2iso"
+    fi
+
+    [[ ! -s "$gene2iso" ]] &&
+        die "The gene2isoform lookup file $gene2iso is empty - the attributes in
+    $gtf do not match what the $annot_format parser expects"
+
+    n_genes_gtf=$(grep -v "^#" "$gtf" | awk -F'\t' '$3 == "gene"' | wc -l)
+    log_time "Total number of genes in the $annot_format file quantified by counting
     'gene' entries in third column (may include non-coding genes): $n_genes_gtf"
 
 elif [[ "$t1_style" == true ]]; then
