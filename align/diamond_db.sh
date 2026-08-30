@@ -25,11 +25,11 @@ TOOL_DOCS=https://github.com/bbuchfink/diamond
 VERSION_COMMAND="diamond --version"
 
 # Defaults - generics
-env_type=conda
-conda_path=/fs/ess/PAS0471/jelmer/conda/diamond
+env_type=container
+container_url=oras://community.wave.seqera.io/library/diamond:2.2.5--95b06d7b3a97178d
 container_dir="$HOME/containers"
-container_url=oras://community.wave.seqera.io/library/diamond:2.1.11--8bbb53f9a405f963
 container_path=
+conda_path=
 
 # ==============================================================================
 #                                   FUNCTIONS

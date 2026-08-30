@@ -25,11 +25,11 @@ TOOL_DOCS=https://github.com/bbuchfink/diamond/wiki
 VERSION_COMMAND="$TOOL_BINARY version"
 
 # Defaults - generics
-env_type=container                       # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/diamond
-container_url=oras://community.wave.seqera.io/library/diamond:2.1.11--8bbb53f9a405f963
-container_path=
+env_type=container
+container_url=oras://community.wave.seqera.io/library/diamond:2.2.5--95b06d7b3a97178d
 container_dir="$HOME/containers"
+container_path=
+conda_path=
 
 # Defaults - tool parameters
 blast_type=blastp                   # Or blastx
