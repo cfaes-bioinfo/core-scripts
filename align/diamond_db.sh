@@ -15,7 +15,7 @@ set -euo pipefail
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Create a Diamond database from a protein FASTA file"
-SCRIPT_VERSION="2026-08-25"
+SCRIPT_VERSION="2026-09-02"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -136,6 +136,7 @@ trap report_on_exit EXIT
 version_only=false  # When true, just print tool & script version info and exit
 infile=
 outdir=
+db_name=
 more_opts=
 threads=
 
@@ -194,8 +195,8 @@ mkdir -p "$LOG_DIR"
 # Record how this script was called (and, under Slurm, which job ran it)
 log_provenance "$LOG_DIR"
 infile_base=$(basename "$infile")
-[[ -n "$db_name" ]] && outfile="$outdir/$db_name"
-[[ -z "$db_name" ]] && outfile="$outdir"/${infile_base%.*}.dmnd
+[[ -z "$db_name" ]] && db_name=${infile_base%.*}.dmnd
+outfile="$outdir"/"$db_name"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -207,6 +208,7 @@ echo "Working directory:                        $PWD"
 echo
 echo "Input file:                               $infile"
 echo "Output DB file:                           $outfile"
+echo "Temp dir (\$TMPDIR):                       ${TMPDIR:-<unset>}"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
 ls -lh "$infile"

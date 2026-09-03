@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=2:00:00
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=1
 #SBATCH --mem=16G
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name=snp-sites
-#SBATCH --output=slurm-snp-sites-%j.out
+#SBATCH --output=slurm-%x-%j.out
+
+# Strict Bash settings
+set -euo pipefail
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Identify SNP sites in a multi-FASTA file with snp-sites"
-SCRIPT_VERSION="2025-08-10"
+DESCRIPTION="Identify SNP sites in an aligned multi-FASTA file with snp-sites"
+SCRIPT_VERSION="2026-09-02"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -21,12 +24,15 @@ TOOL_NAME=SNP-sites
 TOOL_DOCS=https://sanger-pathogens.github.io/snp-sites/
 VERSION_COMMAND="$TOOL_BINARY -V"
 
-# Defaults - generics
-env_type=conda                  # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/conda/snp-sites
-container_url=
+# Defaults - generic
+env_type=container
+container_url=oras://community.wave.seqera.io/library/snp-sites:2.5.1--af7ebd303d7a8565
 container_dir="$HOME/containers"
 container_path=
+conda_path=/fs/ess/PAS0471/conda/snp-sites
+
+# Defaults - tool parameters
+to_vcf=false                # Output a VCF instead of a FASTA file
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -39,33 +45,44 @@ script_help() {
 
 DESCRIPTION:
 $DESCRIPTION
-    
+
 USAGE / EXAMPLE COMMANDS:
-  - Basic usage example:
+  - Basic usage (FASTA output):
       sbatch $0 -i results/mafft/aln.fa -o results/snp-sites/snps.fa
-      sbatch $0 -i results/mafft/aln.fa -o results/snp-sites/snps.fa --vcf
-    
+  - VCF output:
+      sbatch $0 -i results/mafft/aln.fa -o results/snp-sites/snps.vcf --vcf
+  - Pass extra options to $TOOL_NAME:
+      sbatch $0 -i results/mafft/aln.fa -o results/snp-sites/snps.fa --more_opts \"-c\"
+
 REQUIRED OPTIONS:
-  -i/--infile         <file>  Path to input aligned FASTA file
-  -o/--outfile        <file>  Path to output file (will be created if needed)
-                              Default format is FASTA but can be changed with
-                              --vcf
+  -i/--infile         <file>  Input aligned FASTA file
+  -o/--outfile        <file>  Output file (dir will be created if needed)
+                              Default format is FASTA but can be changed with --vcf
 
 OTHER KEY OPTIONS:
-  --vcf                       Output a VCF instead of a FASTA file
+  --vcf                       Output a VCF instead of a FASTA file              [default: $to_vcf]
   --more_opts         <str>   Quoted string with one or more additional options
                               for $TOOL_NAME
-    
+
+OUTPUT:
+  Alongside the tool's own output, '<outfile-dir>/logs' will contain:
+    command.txt     - The command that was run, plus this script's Git commit
+    versions.txt    - Versions of this script and of $TOOL_NAME
+    shell_env.txt   - The shell environment (credential-like values redacted)
+    conda_env.yml   - The Conda environment (when using Conda)
+    slurm-*.out     - A copy of the Slurm log (when run as a Slurm job)
+
 UTILITY OPTIONS:
-  --env_type          <str>   Whether to use a Singularity/Apptainer container  [default: $env_type]
-                              ('container') or a Conda environment ('conda') 
-  --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
+  --env_type          <str>   Software environment: 'conda', 'container'        [default: $env_type]
+                              (Singularity/Apptainer), or 'none' (tool must
+                              already be available in your PATH)
+  --container_url     <str>   URL/URI to download a container from              [default: ${container_url:-none}]
   --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
-  --container_path    <file>  Local container image file ('.sif') to use        [default (if any): $container_path]
-  --conda_path        <dir>   Full path to a Conda environment to use           [default (if any): $conda_path]
+  --container_path    <file>  Local container image file ('.sif') to use        [default: ${container_path:-none}]
+  --conda_path        <dir>   Full path to a Conda environment to use           [default: ${conda_path:-none}]
   -h/--help                   Print this help message
   -v/--version                Print script and $TOOL_NAME versions
-    
+
 TOOL DOCUMENTATION:
   $TOOL_DOCS
 "
@@ -73,8 +90,10 @@ TOOL DOCUMENTATION:
 
 # Function to source the script with Bash functions
 source_function_script() {
+    local is_slurm=${1:-false}
+
     # Determine the location of this script, and based on that, the function script
-    if [[ "$IS_SLURM" == true ]]; then
+    if [[ "$is_slurm" == true ]]; then
         script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
         script_dir=$(dirname "$script_path")
         SCRIPT_NAME=$(basename "$script_path")
@@ -86,20 +105,38 @@ source_function_script() {
     function_script_path="$script_dir"/../dev/"$function_script_name"
 
     # Download the function script if needed, then source it
-    if [[ -f "$function_script_path" ]]; then
+    if [[ -s "$function_script_path" ]]; then
         source "$function_script_path"
     else
-        if [[ ! -f "$function_script_name" ]]; then
+        if [[ ! -s "$function_script_name" ]]; then
             echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
-            wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script_name"
+            # Download to a temp file, then move into place, so that concurrent
+            # jobs can never source a half-written file
+            tmp_script=$(mktemp "$function_script_name".XXXXXX)
+            if ! wget -q "$FUNCTION_SCRIPT_URL" -O "$tmp_script"; then
+                rm -f "$tmp_script"
+                echo "ERROR: Failed to download $FUNCTION_SCRIPT_URL" >&2
+                exit 1
+            fi
+            mv -f "$tmp_script" "$function_script_name"
         fi
         source "$function_script_name"
+    fi
+
+    # Make sure the functions were really loaded
+    if ! declare -F log_time check_val >/dev/null; then
+        echo "ERROR: Sourced $function_script_name but its functions are missing" >&2
+        echo "       (an outdated copy may be cached - try deleting it)" >&2
+        exit 1
     fi
 }
 
 # Check if this is a SLURM job, then load the Bash functions
-if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
-source_function_script $IS_SLURM
+if [[ -z "${SLURM_JOB_ID:-}" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script "$IS_SLURM"
+
+# Report clearly if this script exits with a non-zero status
+trap report_on_exit EXIT
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
@@ -110,20 +147,22 @@ infile=
 outfile=
 more_opts=
 outfile_type_opt=
+threads=
 
 # Parse command-line options
 all_opts="$*"
-while [ "$1" != "" ]; do
+all_opts_q=$(printf '%q ' "$@")   # Shell-quoted, so it can be re-run exactly
+while [[ $# -gt 0 ]]; do
     case "$1" in
-        -i | --infile )     shift && infile=$1 ;;
-        -o | --outfile )    shift && outfile=$1 ;;
-        --vcf )             outfile_type_opt="-v" ;;
-        --more_opts )       shift && more_opts=$1 ;;
-        --env_type )        shift && env_type=$1 ;;
-        --conda_path )      shift && conda_path=$1 ;;
-        --container_dir )   shift && container_dir=$1 ;;
-        --container_url )   shift && container_url=$1 ;;
-        --container_path )  shift && container_path=$1 ;;
+        -i | --infile )     check_val "$1" "${2:-}"; shift; infile=$1 ;;
+        -o | --outfile )    check_val "$1" "${2:-}"; shift; outfile=$1 ;;
+        --vcf )             to_vcf=true ;;
+        --more_opts )       check_val "$1" "${2:-}" lax; shift; more_opts=$1 ;;
+        --env_type )        check_val "$1" "${2:-}"; shift; env_type=$1 ;;
+        --conda_path )      check_val "$1" "${2:-}"; shift; conda_path=$1 ;;
+        --container_dir )   check_val "$1" "${2:-}"; shift; container_dir=$1 ;;
+        --container_url )   check_val "$1" "${2:-}"; shift; container_url=$1 ;;
+        --container_path )  check_val "$1" "${2:-}"; shift; container_path=$1 ;;
         -h | --help )       script_help; exit 0 ;;
         -v | --version)     version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
@@ -134,12 +173,19 @@ done
 # ==============================================================================
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
-# Strict Bash settings
-set -euo pipefail
+# Check software env
+[[ -z "$TOOL_BINARY" ]] && die "TOOL_BINARY has not been set in this script"
+[[ "$env_type" == "conda" && -z "$conda_path" ]] &&
+    die "No Conda env: set 'conda_path' in this script or use --conda_path" "$all_opts"
+[[ "$env_type" == "container" && -z "$container_url" && -z "$container_path" ]] &&
+    die "No container: set 'container_url' in this script or use --container_url/--container_path" "$all_opts"
 
-# Load software
-load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$container_url"
-[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
+# Print version info and exit, if requested (this needs the software env loaded)
+if [[ "$version_only" == true ]]; then
+    load_env
+    print_version "$VERSION_COMMAND"
+    exit 0
+fi
 
 # Check options provided to the script
 [[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
@@ -147,9 +193,17 @@ load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$containe
 [[ ! -f "$infile" ]] && die "Input file $infile does not exist"
 
 # Define outputs based on script parameters
+# NOTE: LOG_DIR is made absolute so that log paths keep resolving if the
+#       script (or the tool) changes the working dir later on
 outdir=$(dirname "$outfile")
-LOG_DIR="$outdir"/logs
+LOG_DIR=$(realpath -m "$outdir")/logs
 mkdir -p "$LOG_DIR"
+
+# Record how this script was called (and, under Slurm, which job ran it)
+log_provenance "$LOG_DIR"
+
+# Build the output-format option
+[[ "$to_vcf" == true ]] && outfile_type_opt="-v"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -161,6 +215,9 @@ echo "Working directory:                        $PWD"
 echo
 echo "Input file:                               $infile"
 echo "Output file:                              $outfile"
+echo "Output dir:                               $outdir"
+echo "Temp dir (\$TMPDIR):                       ${TMPDIR:-<unset>}"
+echo "Output a VCF instead of a FASTA?          $to_vcf"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
 ls -lh "$infile"
@@ -170,6 +227,10 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 #                               RUN
 # ==============================================================================
+# Load the software environment
+load_env
+
+# Run the tool
 log_time "Running $TOOL_NAME..."
 runstats $TOOL_BINARY \
     -o "$outfile" \
@@ -182,4 +243,4 @@ runstats $TOOL_BINARY \
 # ==============================================================================
 log_time "Listing the output file:"
 ls -lh "$outfile"
-final_reporting "$LOG_DIR"
+final_reporting
