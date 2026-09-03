@@ -2,7 +2,7 @@
 #SBATCH --account=PAS0471
 #SBATCH --time=72:00:00
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=8G
+#SBATCH --mem=16G
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=nfc_ampliseq
 #SBATCH --output=slurm-%x-%j.out

@@ -1,6 +1,7 @@
 #!/bin/bash
 #SBATCH --account=PAS0471
 #SBATCH --time=48:00:00
+#SBATCH --mem=16G
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=nfc_rnaseq
 #SBATCH --output=slurm-nfc_rnaseq-%j.out

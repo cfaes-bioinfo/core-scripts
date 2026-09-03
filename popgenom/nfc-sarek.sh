@@ -2,6 +2,7 @@
 #SBATCH --account=PAS0471
 #SBATCH --time=72:00:00
 #SBATCH --cpus-per-task=1
+#SBATCH --mem=16G
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=nfc_sarek
 #SBATCH --output=slurm-nfc_sarek-%j.out
@@ -11,7 +12,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run the Nextflow/nf-core Sarek pipeline (https://nf-co.re/sarek) for genomic variant calling"
-SCRIPT_VERSION="2026-03-22"
+SCRIPT_VERSION="2026-09-02"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh

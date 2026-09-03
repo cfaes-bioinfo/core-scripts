@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=24:00:00
+#SBATCH --mem=16G
 #SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=nfc_taxprof
 #SBATCH --output=slurm-nfc_taxprof-%j.out
@@ -10,7 +11,7 @@
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run the Nextflow/nf-core metagenomic taxonomic profiling pipeline 'taxprofiler' (https://nf-co.re/taxprofiler)"
-SCRIPT_VERSION="2026-07-27"
+SCRIPT_VERSION="2026-09-02"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 TOOL_BINARY="nextflow run"
