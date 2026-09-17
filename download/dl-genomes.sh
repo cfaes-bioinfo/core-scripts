@@ -26,7 +26,7 @@ VERSION_COMMAND="datasets --version"
 
 # Defaults - generics
 env_type=container                # Use a 'conda' env or a Singularity 'container'
-container_url=oras://community.wave.seqera.io/library/ncbi-datasets-cli:18.21.0--42e888b3fc6602f6
+container_url=oras://community.wave.seqera.io/library/ncbi-datasets-cli:18.37.0--b64aeffb20200406
 container_dir="$HOME/containers"
 container_path=
 conda_path=
