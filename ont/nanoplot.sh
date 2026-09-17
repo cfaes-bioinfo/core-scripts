@@ -24,7 +24,7 @@ VERSION_COMMAND="$TOOL_BINARY --version"
 # Defaults - generics
 env_type=container              # Use a 'conda' env or a Singularity 'container'
 conda_path=
-container_url=oras://community.wave.seqera.io/library/nanoplot:1.46.2--df666265eb467952
+container_url=oras://community.wave.seqera.io/library/nanoplot:1.48.0--5a165f9cbce903c3
 container_dir="$HOME/containers"
 container_path=
 
