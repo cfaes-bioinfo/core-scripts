@@ -6,29 +6,31 @@
 #SBATCH --ntasks=1
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name=dorado-demux
-#SBATCH --output=slurm-dorado-demux-%j.out
+#SBATCH --output=slurm-%x-%j.out
+
+# Strict Bash settings
+set -euo pipefail
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Demultiplex basecalled ONT reads with Dorado"
-SCRIPT_VERSION="2026-02-07"
+SCRIPT_VERSION="2026-09-18"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
-TOOL_BINARY="/fs/ess/PAS0471/software/dorado/dorado-1.3.1-linux-x64/bin/dorado"
+TOOL_BINARY="/fs/ess/PAS0471/software/dorado/dorado-2.1.2-linux-x64/bin/dorado"
 TOOL_NAME=Dorado
 TOOL_DOCS=https://github.com/nanoporetech/dorado
 VERSION_COMMAND="$TOOL_BINARY --version"
 
-# Defaults - generics
-version_only=false                 # When true, just print tool & script version info and exit
-env_type=NA                        # No conda or container, Dorado is run from a specific path
-                                   # Including this so the `final_reporting` function does not error out
+# Defaults - generic
+env_type=none                      # Dorado is run from a fixed absolute path (not Conda/container);
+                                   # 'none' just tells load_env()/final_reporting() to skip both
 
-# Constants - tools parameters
-EMIT_FASTQ="--emit-fastq"           # Output FASTQ instead of SAM 
+# Constants - tool parameters
+EMIT_FASTQ="--emit-fastq"          # Output FASTQ instead of SAM
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -41,27 +43,32 @@ script_help() {
 
 DESCRIPTION:
 $DESCRIPTION
-    
+
 USAGE / EXAMPLE COMMANDS:
   - Basic usage example:
-      sbatch $0 -i data/pod5 -o results/dorado
-    
+      sbatch $0 -i results/dorado -o results/dorado_demux --kit SQK-RPB114-24
+
 REQUIRED OPTIONS:
--i/--input          <file>  Input file, or dir with FASTQ or FAST5 files
+-i/--input          <file>  Input file, or dir with FASTQ or BAM files
 -o/--outdir         <dir>   Output dir (will be created if needed)
-                            Both in case of a single or multiple input files, the output will be a single file:
-                              - In case of a single input file, the output file will have the same name as the input file
-                              - In case of a multiple input files, the output file will have the same name as the input dir
---kit               <str>   Barcode kit, e.g. SQK-RPB114-24                              
+                            One gzipped FASTQ file per barcode will be
+                            written directly into this dir (any per-sample/
+                            per-run subdirs that $TOOL_NAME creates are
+                            flattened away), along with a read-count table
+                            'barcode_read_counts.tsv'
+--kit               <str>   Barcode kit, e.g. SQK-RPB114-24
 
 OTHER KEY OPTIONS:
-  --more_opts         <str>   Quoted string with one or more additional options
-                              for $TOOL_NAME
-    
+--barcodes          <file>  File with one barcode ID to keep per line
+                            (e.g. 'barcode01'/'unclassified'), one per line.
+                            When not provided, all barcodes are kept.
+--more_opts         <str>   Quoted string with one or more additional options
+                            for $TOOL_NAME
+
 UTILITY OPTIONS:
-  -h/--help                   Print this help message
-  -v/--version                Print script and $TOOL_NAME versions
-    
+  -h/--help                 Print this help message
+  -v/--version              Print script and $TOOL_NAME versions
+
 TOOL DOCUMENTATION:
   $TOOL_DOCS
 "
@@ -120,8 +127,11 @@ check_functions_loaded() {
 }
 
 # Check if this is a SLURM job, then load the Bash functions
-if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
-source_function_script $IS_SLURM
+if [[ -z "${SLURM_JOB_ID:-}" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script "$IS_SLURM"
+
+# Report clearly if this script exits with a non-zero status
+trap report_on_exit EXIT
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
@@ -131,17 +141,20 @@ version_only=false  # When true, just print tool & script version info and exit
 input=
 outdir=
 kit=
-threads=
+barcode_list=
 more_opts=
+threads=
 
 # Parse command-line options
 all_opts="$*"
-while [ "$1" != "" ]; do
+all_opts_q=$(printf '%q ' "$@")   # Shell-quoted, so it can be re-run exactly
+while [[ $# -gt 0 ]]; do
     case "$1" in
-        -i | --input )      shift && input=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
-        --kit )             shift && kit=$1 ;;
-        --more_opts )       shift && more_opts=$1 ;;
+        -i | --input )      check_val "$1" "${2:-}"; shift; input=$1 ;;
+        -o | --outdir )     check_val "$1" "${2:-}"; shift; outdir=$1 ;;
+        --kit )             check_val "$1" "${2:-}"; shift; kit=$1 ;;
+        --barcodes )        check_val "$1" "${2:-}"; shift; barcode_list=$1 ;;
+        --more_opts )       check_val "$1" "${2:-}" lax; shift; more_opts=$1 ;;
         -h | --help )       script_help; exit 0 ;;
         -v | --version)     version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
@@ -152,20 +165,31 @@ done
 # ==============================================================================
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
-# Strict Bash settings
-set -euo pipefail
-
-# Load software
-[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
+# Print version info and exit, if requested
+if [[ "$version_only" == true ]]; then
+    load_env
+    print_version "$VERSION_COMMAND"
+    exit 0
+fi
 
 # Check options provided to the script
 [[ -z "$input" ]] && die "No input file/dir specified, do so with -i/--input" "$all_opts"
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
 [[ ! -f "$input" && ! -d "$input" ]] && die "Input file/dir $input does not exist"
 [[ -z "$kit" ]] && die "No barcode kit specified, do so with --kit" "$all_opts"
+[[ -n "$barcode_list" && ! -f "$barcode_list" ]] && die "Barcode list file $barcode_list does not exist"
+
+# Warn if the output dir already holds results from a previous run
+check_outdir "$outdir"
 
 # Define outputs based on script parameters
-LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+# NOTE: LOG_DIR is made absolute so that log paths keep resolving if the
+#       script (or the tool) changes the working dir later on
+LOG_DIR=$(realpath -m "$outdir")/logs
+mkdir -p "$LOG_DIR"
+
+# Record how this script was called (and, under Slurm, which job ran it)
+log_provenance "$LOG_DIR"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -178,6 +202,7 @@ echo
 echo "Input file or dir:                        $input"
 echo "Output dir:                               $outdir"
 echo "Barcode kit name:                         $kit"
+[[ -n $barcode_list ]] && echo "Barcode list file:                        $barcode_list"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
 ls -lh "$input"
@@ -187,23 +212,72 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 #                               RUN
 # ==============================================================================
+load_env
+
 log_time "Running $TOOL_NAME..."
-runstats $TOOL_BINARY demux \
+eval runstats "$TOOL_BINARY" demux \
     --kit-name "$kit" \
     "$EMIT_FASTQ" \
     --output-dir "$outdir" \
     --threads "$threads" \
     $more_opts \
-    $input
+    "$input"
+
+log_time "Consolidating output FASTQ files into $outdir..."
+# $TOOL_NAME nests its output in per-sample/per-run subdirs, e.g.
+# <outdir>/<sample>/.../fastq_pass/barcodeNN/*.fastq -- pull all barcode dirs'
+# FASTQ files directly into $outdir, concatenating across any such subdirs
+declare -A bc_seen=()
+while IFS= read -r -d '' bc_dir; do
+    bc=$(basename "$bc_dir")
+    if [[ -z "${bc_seen[$bc]:-}" ]]; then
+        cat "$bc_dir"/*.fastq > "$outdir"/"$bc".fastq
+        bc_seen[$bc]=1
+    else
+        cat "$bc_dir"/*.fastq >> "$outdir"/"$bc".fastq
+    fi
+done < <(find "$outdir" -mindepth 1 -type d \( -name "barcode*" -o -name "unclassified" \) -print0 | sort -z)
+
+# Remove the now-redundant nested dirs (everything except the log dir and the flat FASTQ files)
+# NOTE: compare by name, not against $LOG_DIR, since that path is absolute while
+#       $outdir (and thus the paths find reports here) may be relative
+find "$outdir" -mindepth 1 -maxdepth 1 -type d -not -name "$(basename "$LOG_DIR")" -exec rm -rf {} +
+
+# Keep only the requested barcodes, if a barcode list was provided
+if [[ -n "$barcode_list" ]]; then
+    log_time "Keeping only the barcodes listed in $barcode_list..."
+    for fq in "$outdir"/*.fastq; do
+        [[ -e "$fq" ]] || continue
+        bc=$(basename "$fq" .fastq)
+        grep -qxF "$bc" "$barcode_list" || rm -f "$fq"
+    done
+fi
 
 log_time "Gzipping the output FASTQ files..."
-find "$outdir" -name "*.fastq" | while read -r fq; do
+find "$outdir" -maxdepth 1 -name "*.fastq" | while read -r fq; do
     gzip -cv "$fq" > "$outdir"/"$(basename "$fq")".gz
+    rm -f "$fq"
 done
+
+# Create a table with the number of reads assigned to each barcode
+log_time "Counting reads per barcode..."
+count_table="$outdir"/barcode_read_counts.tsv
+{
+    echo -e "barcode\tn_reads"
+    for fq in "$outdir"/*.fastq.gz; do
+        [[ -e "$fq" ]] || continue
+        bc=$(basename "$fq" .fastq.gz)
+        n_reads=$(( $(zcat "$fq" | wc -l) / 4 ))
+        echo -e "$bc\t$n_reads"
+    done | sort -k1,1V
+} > "$count_table"
+log_time "Read counts per barcode (also saved in $count_table):"
+column -t "$count_table"
 
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
 log_time "Listing files in the output dir:"
-ls -lhd "$(realpath "$outdir")"/*
-final_reporting "$LOG_DIR" "$env_type"
+ls -lhd "$(realpath "$outdir")"/* 2>/dev/null ||
+    log_time "WARNING: No files found in the output dir $outdir"
+final_reporting

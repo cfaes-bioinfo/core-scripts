@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=2:00:00      # NOTE: duplex calling is slower than simplex - increase this via `sbatch --time=...` when using --duplex
+#SBATCH --time=3:00:00
 #SBATCH --gpus-per-node=2
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -16,11 +16,11 @@ set -euo pipefail
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Basecall ONT reads (FAST5 or POD5) with Dorado using GPUs and output FASTQ or BAM files"
-SCRIPT_VERSION="2026-09-17"
+SCRIPT_VERSION="2026-09-18"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
-TOOL_BINARY="/fs/ess/PAS0471/software/dorado/dorado-1.3.1-linux-x64/bin/dorado"
+TOOL_BINARY="/fs/ess/PAS0471/software/dorado/dorado-2.1.2-linux-x64/bin/dorado"
 TOOL_NAME=Dorado
 TOOL_DOCS=https://github.com/nanoporetech/dorado
 VERSION_COMMAND="$TOOL_BINARY --version"
@@ -82,7 +82,7 @@ OTHER KEY OPTIONS:
 --pairs             <file>  CSV file with read ID pairs (--duplex only);
                             when not provided, Dorado will auto-pair reads      [default: off]
 
-  --more_opts       <str>   Quoted string with one or more additional options
+--more_opts       <str>     Quoted string with one or more additional options
                             for $TOOL_NAME
 
 UTILITY OPTIONS:

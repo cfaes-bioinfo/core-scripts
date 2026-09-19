@@ -5,72 +5,66 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --mail-type=FAIL
-#SBATCH --job-name=dorado_correct2
-#SBATCH --output=slurm-dorado_correct2-%j.out
+#SBATCH --job-name=dorado-correct2
+#SBATCH --output=slurm-%x-%j.out
+
+# Strict Bash settings
+set -euo pipefail
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Use Dorado to correct ONT reads via all-to-all alignment - part 2 of 2"
-SCRIPT_VERSION="2024-09-27"
+DESCRIPTION="Use Dorado to correct ONT reads via all-to-all alignment - part 2 of 2 (GPU inference step, using the PAF file from part 1)"
+SCRIPT_VERSION="2026-09-18"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
-TOOL_BINARY="dorado correct"
+TOOL_BINARY="/fs/ess/PAS0471/software/dorado/dorado-2.1.2-linux-x64/bin/dorado"
 TOOL_NAME=Dorado
 TOOL_DOCS=https://github.com/nanoporetech/dorado
-VERSION_COMMAND="dorado --version"
+VERSION_COMMAND="$TOOL_BINARY --version"
 
-# Defaults - generics
-env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/dorado
-container_path=
-container_url=
-dl_container=false
-container_dir="$HOME/containers"
-version_only=false                 # When true, just print tool & script version info and exit
+# Defaults - generic
+env_type=none                      # Dorado is run from a fixed absolute path (not Conda/container);
+                                   # 'none' just tells load_env()/final_reporting() to skip both
 
 # Defaults - tool parameters
-index_size=4G
+index_size=4G                      # Amount of memory for indexing, per core
 
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
 script_help() {
-    echo -e "\n                          $0"
-    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
-    echo "        =============================================================="
-    echo "DESCRIPTION:"
-    echo "  $DESCRIPTION"
-    echo
-    echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage:"
-    echo "      sbatch $0 -i data/fastq -o results/dorado"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--reads          <file>  Input reads in FASTQ format"
-    echo "  --paf               <file>  Input alignments in PAF format"
-    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --index_size        <str>   Amount of memory for indexing, I think per core [default: $index_size]"
-    echo "  --more_opts         <str>   Quoted string with additional options for $TOOL_NAME"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --env_type               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
-    echo "                                (NOTE: If no default '--container_url' is listed below,"
-    echo "                                 you'll have to provide one in order to run the script with a container.)"
-    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
-    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
-    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
-    echo "  -h/--help                   Print this help message and exit"
-    echo "  -v                          Print the version of this script and exit"
-    echo "  --version                   Print the version of $TOOL_NAME and exit"
-    echo
-    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
+    echo -e "
+                        $0
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL
+            =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+
+USAGE / EXAMPLE COMMANDS:
+  - Basic usage example:
+      sbatch $0 -i data/fastq/sample.fastq.gz --paf results/dorado_correct/sample.paf -o results/dorado_correct
+
+REQUIRED OPTIONS:
+-i/--reads          <file>  Input reads in FASTQ format
+--paf               <file>  Input alignments in PAF format (from dorado-correct1.sh)
+-o/--outdir         <dir>   Output dir (will be created if needed)
+
+OTHER KEY OPTIONS:
+--index_size        <str>   Amount of memory for indexing, per core           [default: $index_size]
+--more_opts         <str>   Quoted string with one or more additional options
+                            for $TOOL_NAME
+
+UTILITY OPTIONS:
+  -h/--help                 Print this help message
+  -v/--version              Print script and $TOOL_NAME versions
+
+TOOL DOCUMENTATION:
+  $TOOL_DOCS
+"
 }
 
 # Function to source the script with Bash functions
@@ -126,33 +120,35 @@ check_functions_loaded() {
 }
 
 # Check if this is a SLURM job, then load the Bash functions
-if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
-source_function_script
+if [[ -z "${SLURM_JOB_ID:-}" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script "$IS_SLURM"
+
+# Report clearly if this script exits with a non-zero status
+trap report_on_exit EXIT
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
+version_only=false  # When true, just print tool & script version info and exit
 reads=
 paf=
 outdir=
 more_opts=
+threads=
 
-# Parse command-line args
+# Parse command-line options
 all_opts="$*"
-while [ "$1" != "" ]; do
+all_opts_q=$(printf '%q ' "$@")   # Shell-quoted, so it can be re-run exactly
+while [[ $# -gt 0 ]]; do
     case "$1" in
-        -i | --reads )      shift && reads=$1 ;;
-        --paf )             shift && paf=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
-        --index_size )      shift && index_size=$1 ;;
-        --more_opts )       shift && more_opts=$1 ;;
-        --env_type )             shift && env_type=$1 ;;
-        --dl_container )    dl_container=true ;;
-        --container_dir )   shift && container_dir=$1 ;;
-        --container_url )   shift && container_url=$1 && dl_container=true ;;
+        -i | --reads )      check_val "$1" "${2:-}"; shift; reads=$1 ;;
+        --paf )             check_val "$1" "${2:-}"; shift; paf=$1 ;;
+        -o | --outdir )     check_val "$1" "${2:-}"; shift; outdir=$1 ;;
+        --index_size )      check_val "$1" "${2:-}"; shift; index_size=$1 ;;
+        --more_opts )       check_val "$1" "${2:-}" lax; shift; more_opts=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v | --version )         version_only=true ;;
+        -v | --version)     version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
@@ -161,13 +157,12 @@ done
 # ==============================================================================
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
-# Strict Bash settings
-set -euo pipefail
-
-# Load software
-load_env "$conda_path" "$container_path" "$dl_container"
-module load cuda/12.3.0
-[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
+# Print version info and exit, if requested
+if [[ "$version_only" == true ]]; then
+    load_env
+    print_version "$VERSION_COMMAND"
+    exit 0
+fi
 
 # Check options provided to the script
 [[ -z "$reads" ]] && die "No input reads file specified, do so with -i/--reads" "$all_opts"
@@ -176,9 +171,18 @@ module load cuda/12.3.0
 [[ ! -f "$reads" ]] && die "Input file $reads does not exist"
 [[ ! -f "$paf" ]] && die "Input file $paf does not exist"
 
+# Warn if the output dir already holds results from a previous run
+check_outdir "$outdir"
+
 # Define outputs based on script parameters
-LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+# NOTE: LOG_DIR is made absolute so that log paths keep resolving if the
+#       script (or the tool) changes the working dir later on
+LOG_DIR=$(realpath -m "$outdir")/logs
+mkdir -p "$LOG_DIR"
 outfile="$outdir"/$(basename "${reads%%.*}").fasta
+
+# Record how this script was called (and, under Slurm, which job ran it)
+log_provenance "$LOG_DIR"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -186,6 +190,8 @@ outfile="$outdir"/$(basename "${reads%%.*}").fasta
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options passed to this script:        $all_opts"
+echo "Working directory:                        $PWD"
+echo
 echo "Input FASTQ file:                         $reads"
 echo "Input PAF file:                           $paf"
 echo "Output file:                              $outfile"
@@ -199,16 +205,21 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 #                               RUN
 # ==============================================================================
+load_env
+
 log_time "Running $TOOL_NAME..."
-runstats $TOOL_BINARY \
+eval runstats "$TOOL_BINARY" correct \
     --device cuda:all \
     --index-size "$index_size" \
     --from-paf "$paf" \
     --verbose \
     $more_opts \
-    $reads \
+    "$reads" \
     > "$outfile"
 
-log_time "Listing output file:"
-ls -lh "$outfile"*
-final_reporting "$LOG_DIR"
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
+log_time "Listing the output file:"
+ls -lh "$outfile"
+final_reporting
