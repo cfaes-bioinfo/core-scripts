@@ -253,11 +253,9 @@ if [[ -n "$barcode_list" ]]; then
     done
 fi
 
-log_time "Gzipping the output FASTQ files..."
-find "$outdir" -maxdepth 1 -name "*.fastq" | while read -r fq; do
-    gzip -cv "$fq" > "$outdir"/"$(basename "$fq")".gz
-    rm -f "$fq"
-done
+log_time "Gzipping the output FASTQ files (in parallel with pigz)..."
+find "$outdir" -maxdepth 1 -name "*.fastq" -print0 |
+    xargs -0 -P "$threads" -I{} pigz -v -p 1 "{}"
 
 # Create a table with the number of reads assigned to each barcode
 log_time "Counting reads per barcode..."
