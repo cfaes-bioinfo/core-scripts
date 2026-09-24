@@ -22,13 +22,12 @@ FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main
 TOOL_BINARY=minimap2
 TOOL_NAME=Minimap2
 TOOL_DOCS=https://github.com/lh3/minimap2
-# NOTE: single quotes, so that CONTAINER_PREFIX (set by load_env) is only
-#       expanded when print_version() evals this command
 VERSION_COMMAND='minimap2 --version && ${CONTAINER_PREFIX:-} samtools --version | head -n 1'
 
 # Defaults - generic
 env_type=container          # 'conda' / 'container' / 'none'
-container_url=community.wave.seqera.io/library/minimap:0.2_r124--f12f7574cc7086b6
+# With minimap2 2.31 and samtools 1.24
+container_url=oras://community.wave.seqera.io/library/minimap2_samtools:36e17b25d3087eff
 container_dir="$HOME/containers" # Where to download a container to (if needed)
 container_path=             # Full path to a pre-downloaded container image
 conda_path=                 # Full path to a Conda environment to use
