@@ -1,228 +1,312 @@
 #!/usr/bin/env bash
-
 #SBATCH --account=PAS0471
 #SBATCH --time=3:00:00
-#SBATCH --cpus-per-task=12
-#SBATCH --mem=48G
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=64G
+#SBATCH --mail-type=FAIL
 #SBATCH --job-name=minimap
-#SBATCH --output=slurm-minimap-%j.out
+#SBATCH --output=slurm-%x-%j.out
 
-# ==============================================================================
-#                                   FUNCTIONS
-# ==============================================================================
-## Help function
-Print_help() {
-    echo
-    echo "======================================================================"
-    echo "                            $0"
-    echo "              MAP READS TO A REFERENCE WITH MINIMAP2"
-    echo "======================================================================"
-    echo
-    echo "USAGE:"
-    echo "  sbatch $0 -i <input FASTQ> -r <input reference> -o <output dir> [...]"
-    echo "  bash $0 -h"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--reads      <file>      Input FASTQ file"
-    echo "  -r/--reference  <file>      Input reference"
-    echo "  -o/--outdir     <dir>       Output dir (will be created if needed)"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --out_type      <str>       Output file type: 'sam' or 'paf'        [default: 'sam']"
-    echo "  -x/--preset     <str>       Preset: read and operation type, see below for list [default: 'map-ont']"
-    echo "  --no_flagstat               Don't run samtools flagstat on the output file"
-    echo "  --more_args     <str>       Quoted string with additional argument(s) to pass to Minimap2"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --threads       <int>       Number of threads to tell Minimap to use [default: nr requested in SLURM job]"
-    echo "  --dryrun                    Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                     Run the script in debug mode (print all code)"
-    echo "  -h/--help                   Print this help message and exit"
-    echo "  -v/--version                Print the version of Minimap2 and exit"
-    echo
-    echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i data/my.fastq -r data/ref/genome.fasta -o results/minimap"
-    echo
-    echo "MINIMAP2 PRESET OPTIONS:"
-    echo "  - map-pb/map-ont - PacBio CLR/Nanopore vs reference mapping"
-    echo "  - map-hifi - PacBio HiFi reads vs reference mapping"
-    echo "  - ava-pb/ava-ont - PacBio/Nanopore read overlap"
-    echo "  - asm5/asm10/asm20 - asm-to-ref mapping, for ~0.1/1/5% sequence divergence"
-    echo "  - splice/splice:hq - long-read/Pacbio-CCS spliced alignment"
-    echo "  - sr - genomic short-read mapping"
-    echo
-    echo "SOFTWARE DOCUMENTATION:"
-    echo "  - https://github.com/lh3/minimap2/"
-    echo
-}
-
-## Load software
-Load_software() {
-    module load miniconda3/4.12.0-py39
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
-    source activate /fs/ess/PAS0471/jelmer/conda/minimap2-2.24 # Includes samtools
-}
-
-## Print version
-Print_version() {
-    Load_software
-    minimap2 --version
-}
-
-## Exit upon error with a message
-Die() {
-    printf "\n$0: ERROR: %s\n" "$1" >&2
-    echo -e "Exiting\n" >&2
-    exit 1
-}
-
+# Strict Bash settings
+set -euo pipefail
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-## Option defaults
-outfile_type=sam && outfile_arg="-a"
-preset="map-ont"
-flagstat=true
+# Constants - generic
+DESCRIPTION="Map reads to a reference with Minimap2, and sort and index the output BAM with Samtools"
+SCRIPT_VERSION="2026-09-24"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+REPO_URL=https://github.com/mcic-osu/mcic-scripts
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
+TOOL_BINARY=minimap2
+TOOL_NAME=Minimap2
+TOOL_DOCS=https://github.com/lh3/minimap2
+# NOTE: single quotes, so that CONTAINER_PREFIX (set by load_env) is only
+#       expanded when print_version() evals this command
+VERSION_COMMAND='minimap2 --version && ${CONTAINER_PREFIX:-} samtools --version | head -n 1'
 
-debug=false
-dryrun=false
+# Defaults - generic
+env_type=container          # 'conda' / 'container' / 'none'
+container_url=community.wave.seqera.io/library/minimap:0.2_r124--f12f7574cc7086b6
+container_dir="$HOME/containers" # Where to download a container to (if needed)
+container_path=             # Full path to a pre-downloaded container image
+conda_path=                 # Full path to a Conda environment to use
 
+# Defaults - tool parameters
+preset=map-ont              # Minimap2 preset ('-x')
+out_format=bam              # 'bam' (sorted & indexed) or 'paf'
+flagstat=true               # Run 'samtools flagstat' and 'samtools idxstats' on the BAM file
+
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
+script_help() {
+    echo -e "
+                        $0
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL
+            =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+
+USAGE / EXAMPLE COMMANDS:
+  - Basic usage example:
+      sbatch $0 -i data/fastq/A.fastq.gz -r data/ref/genome.fna -o results/minimap
+  - Pass extra options to $TOOL_NAME (note the quoting):
+      sbatch $0 -i data/fastq/A.fastq.gz -r data/ref/genome.fna -o results/minimap --more_opts \"--secondary=no\"
+
+REQUIRED OPTIONS:
+  -i/--reads          <file>  Input reads (FASTQ/FASTA, can be gzipped)
+  -r/--reference      <file>  Reference genome FASTA, or a Minimap2 index file ('.mmi')
+                              (to avoid re-indexing a large genome for every sample,
+                              create an index first with 'minimap2 -x <preset> -d ref.mmi ref.fna')
+  -o/--outdir         <dir>   Output dir (will be created if needed)
+
+OTHER KEY OPTIONS:
+  -x/--preset         <str>   Minimap2 preset, e.g. 'map-ont', 'lr:hq', 'map-hifi',
+                              'sr', 'asm5' (see the $TOOL_NAME docs)             [default: $preset]
+  --out_format        <str>   Output format: 'bam' (sorted and indexed) or 'paf' [default: $out_format]
+  --prefix            <str>   Output file prefix                                [default: input file name minus extension]
+  --no_flagstat               Don't run 'samtools flagstat' and 'samtools idxstats' [default: run them]
+  --more_opts         <str>   Quoted string with one or more additional options
+                              for $TOOL_NAME
+
+OUTPUT:
+  - <outdir>/<prefix>.bam + .bam.bai   (or <prefix>.paf with '--out_format paf')
+  - <outdir>/<prefix>.flagstat.txt     (unless '--no_flagstat', BAM only)
+  - <outdir>/<prefix>.idxstats.txt     (unless '--no_flagstat', BAM only)
+  Alongside these, '<outdir>/logs' will contain:
+    command.txt     - The command that was run, plus this script's Git commit
+    versions.txt    - Versions of this script, $TOOL_NAME, and Samtools
+    shell_env.txt   - The shell environment (credential-like values redacted)
+    conda_env.yml   - The Conda environment (when using Conda)
+    slurm-*.out     - A copy of the Slurm log (when run as a Slurm job)
+
+UTILITY OPTIONS:
+  --env_type          <str>   Software environment: 'conda', 'container'        [default: $env_type]
+                              (Singularity/Apptainer), or 'none' (tool must
+                              already be available in your PATH)
+  --container_url     <str>   URL/URI to download a container from              [default: ${container_url:-none}]
+  --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
+  --container_path    <file>  Local container image file ('.sif') to use        [default: ${container_path:-none}]
+  --conda_path        <dir>   Full path to a Conda environment to use           [default: ${conda_path:-none}]
+  -h/--help                   Print this help message
+  -v/--version                Print script, $TOOL_NAME, and Samtools versions
+
+TOOL DOCUMENTATION:
+  $TOOL_DOCS
+"
+}
+
+# Function to source the script with Bash functions
+source_function_script() {
+    # NOTE: the argument is optional - some call sites pass none and rely on
+    #       the IS_SLURM global instead
+    local is_slurm=${1:-${IS_SLURM:-false}} candidate
+
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$is_slurm" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
+    else
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
+    fi
+    function_script_name="$(basename "$FUNCTION_SCRIPT_URL")"
+
+    # Look for a local copy first, in order of preference, and only download as a
+    # last resort: the download writes into the working dir, which many jobs share
+    for candidate in "$script_dir"/../dev/"$function_script_name" \
+                     "$script_dir"/../core-scripts/dev/"$function_script_name" \
+                     "$function_script_name"; do
+        if [[ -s "$candidate" ]]; then
+            source "$candidate"
+            check_functions_loaded
+            return 0
+        fi
+    done
+
+    # Download to a temp file, then move into place, so that concurrent jobs
+    # can never source a half-written file
+    echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+    tmp_script=$(mktemp "$function_script_name".XXXXXX)
+    if ! wget -q "$FUNCTION_SCRIPT_URL" -O "$tmp_script"; then
+        rm -f "$tmp_script"
+        echo "ERROR: Failed to download $FUNCTION_SCRIPT_URL" >&2
+        exit 1
+    fi
+    mv -f "$tmp_script" "$function_script_name"
+    source "$function_script_name"
+    check_functions_loaded
+}
+
+# Make sure the function script really provided the functions we rely on
+check_functions_loaded() {
+    if ! declare -F log_time check_val die load_env >/dev/null; then
+        echo "ERROR: Sourced $function_script_name but its functions are missing" >&2
+        echo "       (an outdated or truncated copy may be in the way - try deleting it)" >&2
+        exit 1
+    fi
+}
+
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "${SLURM_JOB_ID:-}" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script "$IS_SLURM"
+
+# Report clearly if this script exits with a non-zero status
+trap report_on_exit EXIT
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-## Placeholder defaults
-threads=1
-reads=""
-reference=""
-outdir=""
-more_args=""
+# Initiate variables
+version_only=false  # When true, just print tool & script version info and exit
+reads=
+reference=
+outdir=
+prefix=
+more_opts=
+threads=
 
-## Parse command-line args
-while [ "$1" != "" ]; do
+# Parse command-line options
+all_opts="$*"
+all_opts_q=$(printf '%q ' "$@")   # Shell-quoted, so it can be re-run exactly
+while [[ $# -gt 0 ]]; do
     case "$1" in
-        -i | --reads )          shift && reads=$1 ;;
-        -r | --reference )      shift && reference=$1 ;;
-        -o | --outdir )         shift && outdir=$1 ;;
-        --outfile_type )        shift && outfile_type=$1 ;;
-        -x | --preset )         shift && preset=$1 ;;
-        --no_flagstat )         flagstat=false ;;
-        --threads )             shift && threads=$1 ;;
-        --more_args )           shift && more_args=$1 ;;
-        --debug )               debug=true ;;
-        --dryrun )              dryrun=true ;;
-        -v | -v | --version )        Print_version; exit ;;
-        -h | --help )           Print_help; exit ;;
-        * )                     Print_help; Die "Invalid option $1" ;;
+        -i | --reads )      check_val "$1" "${2:-}"; shift; reads=$1 ;;
+        -r | --reference )  check_val "$1" "${2:-}"; shift; reference=$1 ;;
+        -o | --outdir )     check_val "$1" "${2:-}"; shift; outdir=$1 ;;
+        -x | --preset )     check_val "$1" "${2:-}"; shift; preset=$1 ;;
+        --out_format )      check_val "$1" "${2:-}"; shift; out_format=$1 ;;
+        --prefix )          check_val "$1" "${2:-}"; shift; prefix=$1 ;;
+        --no_flagstat )     flagstat=false ;;
+        --more_opts )       check_val "$1" "${2:-}" lax; shift; more_opts=$1 ;;
+        --env_type )        check_val "$1" "${2:-}"; shift; env_type=$1 ;;
+        --conda_path )      check_val "$1" "${2:-}"; shift; conda_path=$1 ;;
+        --container_dir )   check_val "$1" "${2:-}"; shift; container_dir=$1 ;;
+        --container_url )   check_val "$1" "${2:-}"; shift; container_url=$1 ;;
+        --container_path )  check_val "$1" "${2:-}"; shift; container_path=$1 ;;
+        -h | --help )       script_help; exit 0 ;;
+        -v | --version)     version_only=true ;;
+        * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
 done
 
-
 # ==============================================================================
-#                          OTHER SETUP
+#                          INFRASTRUCTURE SETUP
 # ==============================================================================
-[[ "$debug" = true ]] && set -o xtrace
+# Check software env
+[[ -z "$TOOL_BINARY" ]] && die "TOOL_BINARY has not been set in this script"
+[[ "$env_type" == "conda" && -z "$conda_path" ]] &&
+    die "No Conda env: set 'conda_path' in this script or use --conda_path" "$all_opts"
+[[ "$env_type" == "container" && -z "$container_url" && -z "$container_path" ]] &&
+    die "No container: set 'container_url' in this script or use --container_url/--container_path" "$all_opts"
 
-## Load software
-[[ "$dryrun" = false ]] && Load_software
-
-## Get number of threads
-if [[ -n "$SLURM_CPUS_PER_TASK" ]]; then
-    threads="$SLURM_CPUS_PER_TASK"
-elif [[ -n "$SLURM_NTASKS" ]]; then
-    threads="$SLURM_NTASKS"
+# Print version info and exit, if requested (this needs the software env loaded)
+if [[ "$version_only" == true ]]; then
+    load_env
+    print_version "$VERSION_COMMAND"
+    exit 0
 fi
 
-## Bash script settings
-set -euo pipefail
+# Check options provided to the script
+[[ -z "$reads" ]] && die "No input reads file specified, do so with -i/--reads" "$all_opts"
+[[ -z "$reference" ]] && die "No reference specified, do so with -r/--reference" "$all_opts"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
+[[ ! -f "$reads" ]] && die "Input reads file $reads does not exist"
+[[ ! -f "$reference" ]] && die "Reference file $reference does not exist"
+[[ "$out_format" != "bam" && "$out_format" != "paf" ]] &&
+    die "Output format ('--out_format') should be 'bam' or 'paf' but is '$out_format'" "$all_opts"
 
-## Output file option
-[[ "$outfile_type" = paf ]] && outfile_arg=""
+# Warn if the output dir already holds results from a previous run
+check_outdir "$outdir"
 
-## Define output file
-reference_ext=$(echo "$reference" | sed -E 's/.*(\.fn?a?s?t?a$)/\1/')
-outfile_base="$outdir"/$(basename "$reference" "$reference_ext")
-outfile="$outfile_base"."$outfile_type"
+# Define outputs based on script parameters
+# NOTE: LOG_DIR is made absolute so that log paths keep resolving if the
+#       script (or the tool) changes the working dir later on
+[[ -z "$prefix" ]] && prefix=$(basename "$reads" | sed -E 's/\.(fastq|fq|fasta|fa|fna)(\.gz)?$//')
+outfile="$outdir"/"$prefix"."$out_format"
+LOG_DIR=$(realpath -m "$outdir")/logs
+mkdir -p "$LOG_DIR"
 
-## Check input
-[[ $reference = "" ]] && Die "Please specify an input reference genome FASTA with -i"
-[[ $reads = "" ]] && Die "Please specify an input FASTQ file with -I"
-[[ $outdir = "" ]] && Die "Please specify an output dir with -o"
-[[ ! -f $reference ]] && Die "Input reference genome FASTA file $reference does not exist"
-[[ ! -f $reads ]] && Die "Input FASTQ file $reads does not exist"
+# Record how this script was called (and, under Slurm, which job ran it)
+log_provenance "$LOG_DIR"
 
-## Report
-echo
+# ==============================================================================
+#                         REPORT PARSED OPTIONS
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "               STARTING SCRIPT MINIMAP.SH"
-date
-echo "=========================================================================="
-echo "Input reads:                 $reads"
-echo "Input reference:             $reference"
-echo "Output dir:                  $outdir"
-echo "Output file type:            $outfile_type"
-echo "Minimap2 preset:             $preset"
+echo "All options passed to this script:        $all_opts"
+echo "Working directory:                        $PWD"
 echo
-echo "Output file:                 $outfile"
-[[ $more_args != "" ]] && echo "Other arguments for Minimap2:    $more_args"
-echo "Listing input files:"
+echo "Input reads:                              $reads"
+echo "Reference:                                $reference"
+echo "Output dir:                               $outdir"
+echo "Output file:                              $outfile"
+echo "Minimap2 preset:                          $preset"
+echo "Run flagstat & idxstats?                  $flagstat"
+echo "Temp dir (\$TMPDIR):                       ${TMPDIR:-<unset>}"
+[[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
+log_time "Listing the input file(s):"
 ls -lh "$reads" "$reference"
-[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN\n"
-echo "=========================================================================="
-echo
-
+set_threads "$IS_SLURM"
+[[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-if [[ "$dryrun" = false ]]; then
-    
-    ## Create the output directory
-    mkdir -p "$outdir"/logs
+# Load the software environment
+load_env
+samtools_binary="${CONTAINER_PREFIX:-} samtools"
 
-    ## Run
-    echo -e "\n## Now running Minimap2..."
-    [[ "$debug" = false ]] && set -o xtrace
-    
-    minimap2 \
+# Run the tool
+log_time "Running $TOOL_NAME..."
+if [[ "$out_format" == "bam" ]]; then
+    # Use (up to) 4 threads and 1 GB per thread for sorting
+    sort_threads=$(( threads < 4 ? threads : 4 ))
+    runstats $TOOL_BINARY \
         -x "$preset" \
         -t "$threads" \
-        "$outfile_arg" \
-        $more_args \
+        -a \
+        $more_opts \
+        "$reference" \
+        "$reads" |
+        $samtools_binary sort \
+            -@ "$sort_threads" \
+            -m 1G \
+            -T "${TMPDIR:-$outdir}/$prefix.sort_tmp" \
+            -o "$outfile" \
+            -
+
+    log_time "Indexing the BAM file..."
+    runstats $samtools_binary index "$outfile"
+else
+    runstats $TOOL_BINARY \
+        -x "$preset" \
+        -t "$threads" \
+        $more_opts \
         "$reference" \
         "$reads" \
         > "$outfile"
-
-    # | samtools sort -o "$bam_out" -T reads.tmp -
-
-    [[ "$debug" = false ]] && set +o xtrace
-
-    if [[ "$flagstat" = true && "$outfile_type" = "sam" ]]; then
-        echo -e "\n## Now running Samtools flagstat..."
-        samtools flagstat "$outfile" > "$outfile_base"_flagstat.txt 
-
-        echo -e "\n## Showing Samtools flagstat output:"
-        cat "$outfile_base"_flagstat.txt
-    fi
-
 fi
 
+# Mapping stats
+if [[ "$flagstat" == true && "$out_format" == "bam" ]]; then
+    log_time "Running samtools flagstat and idxstats..."
+    $samtools_binary flagstat -@ "$threads" "$outfile" > "$outdir"/"$prefix".flagstat.txt
+    $samtools_binary idxstats "$outfile" > "$outdir"/"$prefix".idxstats.txt
+    log_time "Showing the samtools flagstat output:"
+    cat "$outdir"/"$prefix".flagstat.txt
+fi
 
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
-if [[ "$dryrun" = false ]]; then
-    echo
-    echo "========================================================================="
-    echo "## Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n## Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/*
-    echo
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%50,Elapsed,CPUTime,TresUsageInTot,MaxRSS
-fi
-echo
-echo "## Done with script"
-date
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/* 2>/dev/null ||
+    log_time "WARNING: No files found in the output dir $outdir"
+final_reporting
