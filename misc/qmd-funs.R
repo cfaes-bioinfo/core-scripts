@@ -14,7 +14,8 @@ make_dt <- function(
     big_cols = NULL,       # Which columns have big numbers
     sci_notation = TRUE,   # Use scientific number notation
     simple_mode = FALSE,
-    center = "all"
+    center = "all",
+    font_size = "0.85em"
     ) {
   
   if (simple_mode == TRUE) {
@@ -29,7 +30,7 @@ make_dt <- function(
   
   integer_idx <- as.integer(which(sapply(df, class) == "integer"))
   char_idx <- as.integer(which(sapply(df, class) == "character"))
-  numr_idx <- as.integer(which(sapply(df, class) == "character"))
+  numr_idx <- as.integer(which(sapply(df, class) == "numeric"))
   if (center == "integer") center_idx <- integer_idx
   if (center == "all") center_idx <- c(integer_idx, char_idx, numr_idx)
   
@@ -65,7 +66,17 @@ make_dt <- function(
       big_cols, currency = "", interval = 3, mark = ",", digits = 0
     )
   }
-  
+
+  # Shrink the table font size
+  dt <- htmltools::browsable(
+    htmltools::tagList(
+      htmltools::tags$style(
+        sprintf(".dataTables_wrapper { font-size: %s; }", font_size)
+      ),
+      dt
+    )
+  )
+
   return(dt)
 }
 
