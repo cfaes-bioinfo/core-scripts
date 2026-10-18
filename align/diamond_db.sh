@@ -15,7 +15,7 @@ set -euo pipefail
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Create a Diamond database from a protein FASTA file"
-SCRIPT_VERSION="2026-08-25"
+SCRIPT_VERSION="2026-09-02"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -81,7 +81,9 @@ TOOL DOCUMENTATION:
 
 # Function to source the script with Bash functions
 source_function_script() {
-    local is_slurm=${1:-false}
+    # NOTE: the argument is optional - some call sites pass none and rely on
+    #       the IS_SLURM global instead
+    local is_slurm=${1:-${IS_SLURM:-false}} candidate
 
     # Determine the location of this script, and based on that, the function script
     if [[ "$is_slurm" == true ]]; then
@@ -93,31 +95,38 @@ source_function_script() {
         SCRIPT_NAME=$(basename "$0")
     fi
     function_script_name="$(basename "$FUNCTION_SCRIPT_URL")"
-    function_script_path="$script_dir"/../dev/"$function_script_name"
 
-    # Download the function script if needed, then source it
-    if [[ -s "$function_script_path" ]]; then
-        source "$function_script_path"
-    else
-        if [[ ! -s "$function_script_name" ]]; then
-            echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
-            # Download to a temp file, then move into place, so that concurrent
-            # jobs can never source a half-written file
-            tmp_script=$(mktemp "$function_script_name".XXXXXX)
-            if ! wget -q "$FUNCTION_SCRIPT_URL" -O "$tmp_script"; then
-                rm -f "$tmp_script"
-                echo "ERROR: Failed to download $FUNCTION_SCRIPT_URL" >&2
-                exit 1
-            fi
-            mv -f "$tmp_script" "$function_script_name"
+    # Look for a local copy first, in order of preference, and only download as a
+    # last resort: the download writes into the working dir, which many jobs share
+    for candidate in "$script_dir"/../dev/"$function_script_name" \
+                     "$script_dir"/../core-scripts/dev/"$function_script_name" \
+                     "$function_script_name"; do
+        if [[ -s "$candidate" ]]; then
+            source "$candidate"
+            check_functions_loaded
+            return 0
         fi
-        source "$function_script_name"
-    fi
+    done
 
-    # Make sure the functions were really loaded
-    if ! declare -F log_time check_val >/dev/null; then
+    # Download to a temp file, then move into place, so that concurrent jobs
+    # can never source a half-written file
+    echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+    tmp_script=$(mktemp "$function_script_name".XXXXXX)
+    if ! wget -q "$FUNCTION_SCRIPT_URL" -O "$tmp_script"; then
+        rm -f "$tmp_script"
+        echo "ERROR: Failed to download $FUNCTION_SCRIPT_URL" >&2
+        exit 1
+    fi
+    mv -f "$tmp_script" "$function_script_name"
+    source "$function_script_name"
+    check_functions_loaded
+}
+
+# Make sure the function script really provided the functions we rely on
+check_functions_loaded() {
+    if ! declare -F log_time check_val die load_env >/dev/null; then
         echo "ERROR: Sourced $function_script_name but its functions are missing" >&2
-        echo "       (an outdated copy may be cached - try deleting it)" >&2
+        echo "       (an outdated or truncated copy may be in the way - try deleting it)" >&2
         exit 1
     fi
 }
@@ -136,6 +145,7 @@ trap report_on_exit EXIT
 version_only=false  # When true, just print tool & script version info and exit
 infile=
 outdir=
+db_name=
 more_opts=
 threads=
 
@@ -194,8 +204,8 @@ mkdir -p "$LOG_DIR"
 # Record how this script was called (and, under Slurm, which job ran it)
 log_provenance "$LOG_DIR"
 infile_base=$(basename "$infile")
-[[ -n "$db_name" ]] && outfile="$outdir/$db_name"
-[[ -z "$db_name" ]] && outfile="$outdir"/${infile_base%.*}.dmnd
+[[ -z "$db_name" ]] && db_name=${infile_base%.*}.dmnd
+outfile="$outdir"/"$db_name"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -207,6 +217,7 @@ echo "Working directory:                        $PWD"
 echo
 echo "Input file:                               $infile"
 echo "Output DB file:                           $outfile"
+echo "Temp dir (\$TMPDIR):                       ${TMPDIR:-<unset>}"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
 ls -lh "$infile"

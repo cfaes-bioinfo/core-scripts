@@ -83,8 +83,12 @@ TOOL DOCUMENTATION:
 
 # Function to source the script with Bash functions
 source_function_script() {
+    # NOTE: the argument is optional - some call sites pass none and rely on
+    #       the IS_SLURM global instead
+    local is_slurm=${1:-${IS_SLURM:-false}} candidate
+
     # Determine the location of this script, and based on that, the function script
-    if [[ "$IS_SLURM" == true ]]; then
+    if [[ "$is_slurm" == true ]]; then
         script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
         script_dir=$(dirname "$script_path")
         SCRIPT_NAME=$(basename "$script_path")
@@ -93,17 +97,39 @@ source_function_script() {
         SCRIPT_NAME=$(basename "$0")
     fi
     function_script_name="$(basename "$FUNCTION_SCRIPT_URL")"
-    function_script_path="$script_dir"/../dev/"$function_script_name"
 
-    # Download the function script if needed, then source it
-    if [[ -f "$function_script_path" ]]; then
-        source "$function_script_path"
-    else
-        if [[ ! -f "$function_script_name" ]]; then
-            echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
-            wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script_name"
+    # Look for a local copy first, in order of preference, and only download as a
+    # last resort: the download writes into the working dir, which many jobs share
+    for candidate in "$script_dir"/../dev/"$function_script_name" \
+                     "$script_dir"/../core-scripts/dev/"$function_script_name" \
+                     "$function_script_name"; do
+        if [[ -s "$candidate" ]]; then
+            source "$candidate"
+            check_functions_loaded
+            return 0
         fi
-        source "$function_script_name"
+    done
+
+    # Download to a temp file, then move into place, so that concurrent jobs
+    # can never source a half-written file
+    echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+    tmp_script=$(mktemp "$function_script_name".XXXXXX)
+    if ! wget -q "$FUNCTION_SCRIPT_URL" -O "$tmp_script"; then
+        rm -f "$tmp_script"
+        echo "ERROR: Failed to download $FUNCTION_SCRIPT_URL" >&2
+        exit 1
+    fi
+    mv -f "$tmp_script" "$function_script_name"
+    source "$function_script_name"
+    check_functions_loaded
+}
+
+# Make sure the function script really provided the functions we rely on
+check_functions_loaded() {
+    if ! declare -F log_time check_val die load_env >/dev/null; then
+        echo "ERROR: Sourced $function_script_name but its functions are missing" >&2
+        echo "       (an outdated or truncated copy may be in the way - try deleting it)" >&2
+        exit 1
     fi
 }
 

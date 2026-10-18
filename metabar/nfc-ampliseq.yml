@@ -1,6 +1,6 @@
 # Example/template parameter file for the Nextflow/nf-core ampliseq pipeline (https://nf-co.re/ampliseq)
 # Use with the script mcic-scripts/metabar/nfcore_ampliseq.sh
-# Jelmer Poelstra, last edited 2025-01-25 (https://github.com/mcic-osu/mcic-scripts)
+# Jelmer Poelstra, last edited 2026-09-02 (https://github.com/mcic-osu/mcic-scripts)
 
 # ==============================================================================
 #                         INPUT AND OUTPUT FILES
@@ -29,8 +29,10 @@ metadata_category: 'treatment'
 metadata_category_barplot: 'treatment'
 
 # Forward and reverse primer sequences:
-FW_primer: 'TCGTCGGCAGCGTCAGATGTGTATAAGAGACAGCCTACGGGNGGCWGCAG'
-RV_primer: 'GTCTCGTGGGCTCGGAGATGTGTATAAGAGACAGGACTACHVGGGTATCTAATCC'
+FW_primer: 'CCTACGGGNGGCWGCAG'
+RV_primer: 'GACTACHVGGGTATCTAATCC'
+# V3-V4: CCTACGGGNGGCWGCAG - GACTACHVGGGTATCTAATCC
+# V4-V5: GAGTGCCAGCMGCCGCGGTAA - ACGGACTACHVGGGTWTCTAAT
 
 # Min. and max. expected amplicon/ASV lengths (shorter and longer ASVs will be filtered out):
 # - For 16S, a range of 5-10 basepairs make sense
@@ -46,6 +48,14 @@ max_len_asv: 260
 # (See also https://nf-co.re/ampliseq/parameters#read-trimming-and-quality-filtering)
 # trunclenf: 200
 # trunclenr: 150
+
+# Quality score at which to truncate reads (applied together with trunclenf/trunclenr above)
+# - Default is 2; raise this if you want stricter quality-based trimming
+# truncq: 2
+
+# Strategy for merging forward and reverse reads: 'merge' (default) / 'concatenate' / 'consensus'
+# - 'consensus' is useful for ITS or other datasets with a mix of overlapping and non-overlapping read pairs
+# mergepairs_strategy: 'merge'
 
 # Comma-separated quality bins for binned-quality data (NextSeq/NovaSeq)
 #! Note: changed from earlier option 'illumina_novaseq: true'
@@ -75,7 +85,7 @@ illumina_pe_its: false
 # - For ITS, use: 'unite-fungi=9.0'
 dada_ref_taxonomy: 'silva=138'
 #dada_ref_tax_custom     # Use to point to a custom FASTA file
-#dada_ref_tax_taxlevels: Domain,Subdomain,Class,Order,Family,Genus,Species
+#dada_assign_taxlevels: Domain,Subdomain,Class,Order,Family,Genus,Species
 
 # Whether to add UNITE species hypotheses (SH).
 # Set to true for ITS; doesn't apply to 16S so set to false like below or comment out
@@ -94,4 +104,12 @@ min_frequency: 2
 
 # If this is set to false, the pipeline will stop running when certain samples
 # have too few reads left after trimming
-ignore_failed_trimming: true
+ignore_failed_filtering: true
+
+# Directory to cache downloaded reference taxonomy databases (Silva/UNITE/etc.) for reuse across runs
+# - Recommended on a shared system like OSC to avoid re-downloading large DBs each time
+# ref_taxonomy_storage: '/path/to/shared/ref_taxonomy_cache'
+
+# Contaminant removal with the 'decontam' R package: 'none' (default) / 'decontaminate' / 'notcontaminant'
+# - Requires a 'control' and/or 'quant_reading' column in the metadata file
+# decontam: 'none'

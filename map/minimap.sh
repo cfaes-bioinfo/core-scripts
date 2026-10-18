@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --account=PAS0471
-#SBATCH --time=12:00:00
-#SBATCH --cpus-per-task=40
-#SBATCH --mem=150G
+#SBATCH --time=3:00:00
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=64G
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name=minimap
 #SBATCH --output=slurm-%x-%j.out
@@ -14,29 +14,32 @@ set -euo pipefail
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
-DESCRIPTION="Map long reads (or assemblies) to a reference with Minimap2, and produce a coordinate-sorted, indexed BAM plus per-contig coverage"
+DESCRIPTION="Map reads to a reference with Minimap2, and sort and index the output BAM with Samtools (optionally also writing a per-contig coverage table)"
 SCRIPT_VERSION="2026-10-18"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
 TOOL_BINARY=minimap2
 TOOL_NAME=Minimap2
-TOOL_DOCS="https://lh3.github.io/minimap2 | https://github.com/lh3/minimap2"
-VERSION_COMMAND="$TOOL_BINARY --version"
+TOOL_DOCS=https://github.com/lh3/minimap2
+VERSION_COMMAND='minimap2 --version && ${CONTAINER_PREFIX:-} samtools --version | head -n 1'
 
 # Defaults - generic
-env_type=container
-# This container has minimap2-2.31 and samtools-1.24:
+env_type=container          # 'conda' / 'container' / 'none'
+# With minimap2 2.31 and samtools 1.24
 container_url=oras://community.wave.seqera.io/library/minimap2_samtools:36e17b25d3087eff
-container_dir="$HOME/containers"
-container_path=
-conda_path=
+container_dir="$HOME/containers" # Where to download a container to (if needed)
+container_path=             # Full path to a pre-downloaded container image
+conda_path=                 # Full path to a Conda environment to use
 
 # Defaults - tool parameters
-preset=                     # -x: minimap2 preset - required, no default (see --help)
-prefix=                     # Output file prefix (default: basename of the assembly)
-sort_mem=4G                 # samtools sort -m: memory per sorting thread
-sort_threads=               # samtools sort -@ (default: a quarter of the job's threads)
+preset=map-ont              # Minimap2 preset ('-x')
+out_format=bam              # 'bam' (sorted & indexed) or 'paf'
+flagstat=true               # Run 'samtools flagstat' and 'samtools idxstats' on the BAM file
+coverage=false              # Write a per-contig coverage table with 'samtools coverage' (BAM only)
+csi=false                   # Also write a .csi index (BAM only)
+sort_mem=1G                 # 'samtools sort -m': memory per sorting thread
+sort_threads=               # 'samtools sort -@' [default: the job's threads, up to 4]
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -50,52 +53,51 @@ script_help() {
 DESCRIPTION:
 $DESCRIPTION
 
-This script pipes Minimap2 straight into 'samtools sort', because the
-intermediate SAM for a whole long-read run is far too large to write to disk.
-
-It produces the coordinate-sorted and indexed BAM that BlobToolKit, Inspector and
-purge_dups all need. It also writes a per-contig coverage table, which is the
-main discriminator when deciding which contigs are contamination.
-
-MEMORY NOTE:
-  'samtools sort' uses up to (--sort_threads x --sort_mem) of memory on top of
-  whatever Minimap2 needs for the index. With the defaults on a 40-core job that
-  is 10 x 4G = 40 GB for sorting, which fits the 150G requested above.
-  Raise '#SBATCH --mem' if you raise either option.
-
 USAGE / EXAMPLE COMMANDS:
-  - Basic usage:
-      sbatch $0 -i data/hifi_reads.fastq.gz -r results/hifiasm/asm.fasta -x map-hifi -o results/minimap
+  - Basic usage example:
+      sbatch $0 -i data/fastq/A.fastq.gz -r data/ref/genome.fna -o results/minimap
   - Pass extra options to $TOOL_NAME (note the quoting):
-      sbatch $0 -i reads.fastq.gz -r asm.fasta -x map-ont -o results/minimap --more_opts \"--secondary=no\"
+      sbatch $0 -i data/fastq/A.fastq.gz -r data/ref/genome.fna -o results/minimap --more_opts \"--secondary=no\"
 
 REQUIRED OPTIONS:
-  -i/--infile         <file>  Input FASTQ (or FASTA) file with the reads
-  -r/--ref            <file>  Reference FASTA file: the genome assembly to map to
-  -x/--preset         <str>   Minimap2 preset ('-x'), e.g.:
-                                map-hifi   PacBio HiFi reads
-                                map-ont    Nanopore reads
-                                map-pb     PacBio CLR reads
-                                asm5/asm10/asm20  assembly vs reference, ~0.1/1/5% divergence
-                                splice / splice:hq  spliced long-read alignment
-                                sr         short reads
+  -i/--reads          <file>  Input reads (FASTQ/FASTA, can be gzipped)
+  -r/--reference      <file>  Reference genome FASTA, or a Minimap2 index file ('.mmi')
+                              (to avoid re-indexing a large genome for every sample,
+                              create an index first with 'minimap2 -x <preset> -d ref.mmi ref.fna')
   -o/--outdir         <dir>   Output dir (will be created if needed)
 
 OTHER KEY OPTIONS:
-  --prefix            <str>   Output file prefix                                [default: basename of --ref]
+  -x/--preset         <str>   Minimap2 preset, e.g. 'map-ont', 'lr:hq', 'map-hifi',
+                              'sr', 'asm5' (see the $TOOL_NAME docs)             [default: $preset]
+  --out_format        <str>   Output format: 'bam' (sorted and indexed) or 'paf' [default: $out_format]
+  --prefix            <str>   Output file prefix                                [default: input file name minus extension]
+  --no_flagstat               Don't run 'samtools flagstat' and 'samtools idxstats' [default: run them]
+  --coverage                  Also write a per-contig coverage table ('samtools coverage'),
+                              and print the contigs with the lowest and highest depth
+                              (useful for spotting contaminant or organellar contigs)
+  --csi                       Also write a .csi index, which e.g. BlobToolKit needs
+                              ('blobtools add --cov' only looks for a .csi)
   --sort_mem          <str>   Memory per 'samtools sort' thread ('-m')          [default: $sort_mem]
-  --sort_threads      <int>   Threads for 'samtools sort' ('-@')                [default: a quarter of the job's threads]
-  --more_opts         <str>   Quoted string with one or more additional options
+  --sort_threads      <int>   Threads for 'samtools sort' ('-@')                [default: the job's threads, up to 4]
+  --more_opts        <str>   Quoted string with one or more additional options
                               for $TOOL_NAME
 
 OUTPUT:
-  <outdir>/<prefix>.bam           - Coordinate-sorted, indexed BAM
-  <outdir>/<prefix>.coverage.tsv  - Per-contig mean depth, breadth and mean MAPQ
-  <outdir>/<prefix>.flagstat.txt  - Alignment summary
-  Alongside those, '<outdir>/logs' will contain:
+  - <outdir>/<prefix>.bam + .bam.bai   (or <prefix>.paf with '--out_format paf')
+  - <outdir>/<prefix>.bam.csi          (with '--csi')
+  - <outdir>/<prefix>.flagstat.txt     (unless '--no_flagstat', BAM only)
+  - <outdir>/<prefix>.idxstats.txt     (unless '--no_flagstat', BAM only)
+  - <outdir>/<prefix>.coverage.tsv     (with '--coverage': per-contig depth, breadth and MAPQ)
+
+  When sorting, 'samtools sort' uses up to (--sort_threads x --sort_mem) of memory
+  on top of whatever Minimap2 needs for the index: raise '#SBATCH --mem' if you
+  raise either option, or for large genomes.
+
+  Alongside these, '<outdir>/logs' will contain:
     command.txt     - The command that was run, plus this script's Git commit
-    versions.txt    - Versions of this script and of $TOOL_NAME
+    versions.txt    - Versions of this script, $TOOL_NAME, and Samtools
     shell_env.txt   - The shell environment (credential-like values redacted)
+    conda_env.yml   - The Conda environment (when using Conda)
     slurm-*.out     - A copy of the Slurm log (when run as a Slurm job)
 
 UTILITY OPTIONS:
@@ -107,16 +109,20 @@ UTILITY OPTIONS:
   --container_path    <file>  Local container image file ('.sif') to use        [default: ${container_path:-none}]
   --conda_path        <dir>   Full path to a Conda environment to use           [default: ${conda_path:-none}]
   -h/--help                   Print this help message
-  -v/--version                Print script and $TOOL_NAME versions
+  -v/--version                Print script, $TOOL_NAME, and Samtools versions
 
-TOOL DOCUMENTATION: $TOOL_DOCS
+TOOL DOCUMENTATION:
+  $TOOL_DOCS
 "
 }
 
 # Function to source the script with Bash functions
 source_function_script() {
-    local is_slurm=${1:-false}
+    # NOTE: the argument is optional - some call sites pass none and rely on
+    #       the IS_SLURM global instead
+    local is_slurm=${1:-${IS_SLURM:-false}} candidate
 
+    # Determine the location of this script, and based on that, the function script
     if [[ "$is_slurm" == true ]]; then
         script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
         script_dir=$(dirname "$script_path")
@@ -126,27 +132,38 @@ source_function_script() {
         SCRIPT_NAME=$(basename "$0")
     fi
     function_script_name="$(basename "$FUNCTION_SCRIPT_URL")"
-    function_script_path="$script_dir"/../dev/"$function_script_name"
 
-    if [[ -s "$function_script_path" ]]; then
-        source "$function_script_path"
-    else
-        if [[ ! -s "$function_script_name" ]]; then
-            echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
-            tmp_script=$(mktemp "$function_script_name".XXXXXX)
-            if ! wget -q "$FUNCTION_SCRIPT_URL" -O "$tmp_script"; then
-                rm -f "$tmp_script"
-                echo "ERROR: Failed to download $FUNCTION_SCRIPT_URL" >&2
-                exit 1
-            fi
-            mv -f "$tmp_script" "$function_script_name"
+    # Look for a local copy first, in order of preference, and only download as a
+    # last resort: the download writes into the working dir, which many jobs share
+    for candidate in "$script_dir"/../dev/"$function_script_name" \
+                     "$script_dir"/../core-scripts/dev/"$function_script_name" \
+                     "$function_script_name"; do
+        if [[ -s "$candidate" ]]; then
+            source "$candidate"
+            check_functions_loaded
+            return 0
         fi
-        source "$function_script_name"
-    fi
+    done
 
-    if ! declare -F log_time check_val >/dev/null; then
+    # Download to a temp file, then move into place, so that concurrent jobs
+    # can never source a half-written file
+    echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+    tmp_script=$(mktemp "$function_script_name".XXXXXX)
+    if ! wget -q "$FUNCTION_SCRIPT_URL" -O "$tmp_script"; then
+        rm -f "$tmp_script"
+        echo "ERROR: Failed to download $FUNCTION_SCRIPT_URL" >&2
+        exit 1
+    fi
+    mv -f "$tmp_script" "$function_script_name"
+    source "$function_script_name"
+    check_functions_loaded
+}
+
+# Make sure the function script really provided the functions we rely on
+check_functions_loaded() {
+    if ! declare -F log_time check_val die load_env >/dev/null; then
         echo "ERROR: Sourced $function_script_name but its functions are missing" >&2
-        echo "       (an outdated copy may be cached - try deleting it)" >&2
+        echo "       (an outdated or truncated copy may be in the way - try deleting it)" >&2
         exit 1
     fi
 }
@@ -161,21 +178,29 @@ trap report_on_exit EXIT
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-version_only=false
-infile=
-ref=
+# Initiate variables
+version_only=false  # When true, just print tool & script version info and exit
+reads=
+reference=
 outdir=
+prefix=
 more_opts=
 threads=
 
+# Parse command-line options
 all_opts="$*"
+all_opts_q=$(printf '%q ' "$@")   # Shell-quoted, so it can be re-run exactly
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -i | --infile | --reads )  check_val "$1" "${2:-}"; shift; infile=$1 ;;
-        -r | --ref | --reference ) check_val "$1" "${2:-}"; shift; ref=$1 ;;
+        -i | --reads )      check_val "$1" "${2:-}"; shift; reads=$1 ;;
+        -r | --reference )  check_val "$1" "${2:-}"; shift; reference=$1 ;;
         -o | --outdir )     check_val "$1" "${2:-}"; shift; outdir=$1 ;;
         -x | --preset )     check_val "$1" "${2:-}"; shift; preset=$1 ;;
+        --out_format )      check_val "$1" "${2:-}"; shift; out_format=$1 ;;
         --prefix )          check_val "$1" "${2:-}"; shift; prefix=$1 ;;
+        --no_flagstat )     flagstat=false ;;
+        --coverage )        coverage=true ;;
+        --csi )             csi=true ;;
         --sort_mem )        check_val "$1" "${2:-}"; shift; sort_mem=$1 ;;
         --sort_threads )    check_val "$1" "${2:-}"; shift; sort_threads=$1 ;;
         --more_opts )       check_val "$1" "${2:-}" lax; shift; more_opts=$1 ;;
@@ -194,12 +219,14 @@ done
 # ==============================================================================
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
+# Check software env
 [[ -z "$TOOL_BINARY" ]] && die "TOOL_BINARY has not been set in this script"
 [[ "$env_type" == "conda" && -z "$conda_path" ]] &&
     die "No Conda env: set 'conda_path' in this script or use --conda_path" "$all_opts"
 [[ "$env_type" == "container" && -z "$container_url" && -z "$container_path" ]] &&
     die "No container: set 'container_url' in this script or use --container_url/--container_path" "$all_opts"
 
+# Print version info and exit, if requested (this needs the software env loaded)
 if [[ "$version_only" == true ]]; then
     load_env
     print_version "$VERSION_COMMAND"
@@ -207,24 +234,26 @@ if [[ "$version_only" == true ]]; then
 fi
 
 # Check options provided to the script
-[[ -z "$infile" ]] && die "No input FASTQ specified, do so with -i/--infile" "$all_opts"
-[[ -z "$ref" ]] && die "No reference FASTA specified, do so with -r/--ref" "$all_opts"
-[[ -z "$preset" ]] && die "No Minimap2 preset specified, do so with -x/--preset" "$all_opts"
+[[ -z "$reads" ]] && die "No input reads file specified, do so with -i/--reads" "$all_opts"
+[[ -z "$reference" ]] && die "No reference specified, do so with -r/--reference" "$all_opts"
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
-[[ ! -f "$infile" ]] && die "Input FASTQ $infile does not exist"
-[[ ! -f "$ref" ]] && die "Reference FASTA $ref does not exist"
+[[ ! -f "$reads" ]] && die "Input reads file $reads does not exist"
+[[ ! -f "$reference" ]] && die "Reference file $reference does not exist"
+[[ "$out_format" != "bam" && "$out_format" != "paf" ]] &&
+    die "Output format ('--out_format') should be 'bam' or 'paf' but is '$out_format'" "$all_opts"
 
+# Warn if the output dir already holds results from a previous run
 check_outdir "$outdir"
 
 # Define outputs based on script parameters
+# NOTE: LOG_DIR is made absolute so that log paths keep resolving if the
+#       script (or the tool) changes the working dir later on
+[[ -z "$prefix" ]] && prefix=$(basename "$reads" | sed -E 's/\.(fastq|fq|fasta|fa|fna)(\.gz)?$//')
+outfile="$outdir"/"$prefix"."$out_format"
 LOG_DIR=$(realpath -m "$outdir")/logs
 mkdir -p "$LOG_DIR"
-[[ -z "$prefix" ]] && prefix=$(basename "$ref" | sed -E 's/\.(fa|fna|fas|fasta)(\.gz)?$//')
-bam_out="$outdir"/"$prefix".bam
-cov_out="$outdir"/"$prefix".coverage.tsv
-flagstat_out="$outdir"/"$prefix".flagstat.txt
-sort_tmp="${TMPDIR:-/tmp}"/"$prefix".sorttmp.$$
 
+# Record how this script was called (and, under Slurm, which job ran it)
 log_provenance "$LOG_DIR"
 
 # ==============================================================================
@@ -235,77 +264,96 @@ echo "==========================================================================
 echo "All options passed to this script:        $all_opts"
 echo "Working directory:                        $PWD"
 echo
-echo "Input FASTQ file:                         $infile"
-echo "Reference (assembly) FASTA:               $ref"
+echo "Input reads:                              $reads"
+echo "Reference:                                $reference"
 echo "Output dir:                               $outdir"
-echo "Output BAM file:                          $bam_out"
+echo "Output file:                              $outfile"
 echo "Minimap2 preset:                          $preset"
+echo "Run flagstat & idxstats?                  $flagstat"
+echo "Write coverage table?                     $coverage"
+echo "Write .csi index?                         $csi"
 echo "Temp dir (\$TMPDIR):                       ${TMPDIR:-<unset>}"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
-ls -lh "$infile" "$ref"
+ls -lh "$reads" "$reference"
 set_threads "$IS_SLURM"
 [[ "$IS_SLURM" == true ]] && slurm_resources
-
-# Now that 'threads' is known, work out the sorting threads
-[[ -z "$sort_threads" ]] && sort_threads=$(( threads / 4 ))
-[[ "$sort_threads" -lt 1 ]] && sort_threads=1
-echo
-echo "Threads for Minimap2:                     $threads"
-echo "Threads for 'samtools sort':              $sort_threads"
-echo "Memory per sorting thread:                $sort_mem"
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
+# Load the software environment
 load_env
+samtools_binary="${CONTAINER_PREFIX:-} samtools"
 
-# Samtools comes from the same container/env as Minimap2.
-# NOTE: 'load_container' has already prepended the container prefix to TOOL_BINARY,
-#       so only the Samtools calls need CONTAINER_PREFIX added by hand.
-SAMTOOLS="${CONTAINER_PREFIX:-} samtools"
+# Run the tool
+log_time "Running $TOOL_NAME..."
+if [[ "$out_format" == "bam" ]]; then
+    # By default, sort with (up to) 4 threads
+    [[ -z "$sort_threads" ]] && sort_threads=$(( threads < 4 ? threads : 4 ))
+    runstats $TOOL_BINARY \
+        -x "$preset" \
+        -t "$threads" \
+        -a \
+        $more_opts \
+        "$reference" \
+        "$reads" |
+        $samtools_binary sort \
+            -@ "$sort_threads" \
+            -m "$sort_mem" \
+            -T "${TMPDIR:-$outdir}/$prefix.sort_tmp" \
+            -o "$outfile" \
+            -
 
-log_time "Running $TOOL_NAME, piping into 'samtools sort'..."
-# 'bash -o pipefail' so that a Minimap2 failure is not masked by a successful sort
-runstats bash -o pipefail -c "
-    $TOOL_BINARY -a -x $preset -t $threads $more_opts \
-        $(printf '%q' "$ref") $(printf '%q' "$infile") |
-    $SAMTOOLS sort -@ $sort_threads -m $sort_mem \
-        -T $(printf '%q' "$sort_tmp") -o $(printf '%q' "$bam_out")
-"
+    log_time "Indexing the BAM file..."
+    runstats $samtools_binary index -@ "$threads" "$outfile"
+    if [[ "$csi" == true ]]; then
+        log_time "Writing a .csi index..."
+        $samtools_binary index -c -@ "$threads" "$outfile"
+    fi
+else
+    runstats $TOOL_BINARY \
+        -x "$preset" \
+        -t "$threads" \
+        $more_opts \
+        "$reference" \
+        "$reads" \
+        > "$outfile"
+fi
 
-log_time "Indexing the BAM file..."
-runstats $SAMTOOLS index -@ "$threads" "$bam_out"
-# Also write a .csi index: BlobToolKit's 'blobtools add --cov' only checks for
-# a pre-existing .csi, and crashes trying to delete one it wrongly assumes it
-# just created itself when only a .bai is present.
-$SAMTOOLS index -c -@ "$threads" "$bam_out"
+# Mapping stats
+if [[ "$flagstat" == true && "$out_format" == "bam" ]]; then
+    log_time "Running samtools flagstat and idxstats..."
+    $samtools_binary flagstat -@ "$threads" "$outfile" > "$outdir"/"$prefix".flagstat.txt
+    $samtools_binary idxstats "$outfile" > "$outdir"/"$prefix".idxstats.txt
+    log_time "Showing the samtools flagstat output:"
+    cat "$outdir"/"$prefix".flagstat.txt
+fi
 
-log_time "Computing per-contig coverage..."
-$SAMTOOLS coverage "$bam_out" > "$cov_out"
+# Per-contig coverage: the main signal for spotting contaminant and organellar
+# contigs, so show the extremes here rather than making the user open the file
+if [[ "$coverage" == true && "$out_format" == "bam" ]]; then
+    cov_out="$outdir"/"$prefix".coverage.tsv
+    log_time "Computing per-contig coverage..."
+    $samtools_binary coverage "$outfile" > "$cov_out"
 
-log_time "Summarizing the alignments..."
-$SAMTOOLS flagstat -@ "$threads" "$bam_out" > "$flagstat_out"
-cat "$flagstat_out"
-
-# Coverage is the main signal for spotting contaminant and organellar contigs,
-# so show the extremes here rather than making the user open the file
-log_time "Contigs with the LOWEST mean depth (candidate contaminants):"
-awk 'NR == 1 { next } { print }' "$cov_out" |
-    sort -k7,7g | head -10 |
-    awk 'BEGIN { printf "  %-16s %10s %8s %8s\n", "contig", "length", "depth", "covered%" }
-         { printf "  %-16s %10d %8.1f %8.1f\n", $1, $3, $7, $6 }'
-
-log_time "Contigs with the HIGHEST mean depth (candidate organellar/repeat contigs):"
-awk 'NR == 1 { next } { print }' "$cov_out" |
-    sort -k7,7gr | head -10 |
-    awk 'BEGIN { printf "  %-16s %10s %8s %8s\n", "contig", "length", "depth", "covered%" }
-         { printf "  %-16s %10d %8.1f %8.1f\n", $1, $3, $7, $6 }'
+    # Columns of 'samtools coverage': 1=contig, 3=end position (= length),
+    # 6=% covered, 7=mean depth. 'awk NR <= 10' rather than 'head -10' so that
+    # 'pipefail' cannot turn an early close into exit status 141.
+    for ext in lowest highest; do
+        sort_flag="-k7,7g"; [[ "$ext" == "highest" ]] && sort_flag="-k7,7gr"
+        log_time "Contigs with the $ext mean depth:"
+        tail -n +2 "$cov_out" |
+            sort $sort_flag |
+            awk 'NR <= 10' |
+            awk 'BEGIN { printf "  %-16s %10s %8s %8s\n", "contig", "length", "depth", "covered%" }
+                 { printf "  %-16s %10d %8.1f %8.1f\n", $1, $3, $7, $6 }'
+    done
+fi
 
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
-rm -f "$sort_tmp"*.bam 2>/dev/null || true
 log_time "Listing files in the output dir:"
 ls -lhd "$(realpath "$outdir")"/* 2>/dev/null ||
     log_time "WARNING: No files found in the output dir $outdir"
