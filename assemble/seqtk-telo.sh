@@ -26,7 +26,7 @@ VERSION_COMMAND="seqtk 2>&1 | grep -i version"
 
 # Defaults - generic
 env_type=container                  # Use a 'conda' env or a Singularity 'container'
-container_url=                      # <-- ADD THE SEQERA URI FOR seqtk HERE (https://seqera.io/containers)
+container_url=oras://community.wave.seqera.io/library/seqtk:r93--079a434f17ef2d78
 container_dir="$HOME/containers"
 container_path=
 conda_path=

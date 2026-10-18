@@ -207,6 +207,11 @@ done
 [[ "$env_type" == "conda" && -z "$conda_path" ]] &&
     die "No Conda env: set 'conda_path' in this script or use --conda_path" "$all_opts"
 
+# emapper.py --version prints its version and exits before it processes --data_dir,
+# so it looks for the DB in its install dir and always reports 'DB version: unknown'.
+# Call the same function it uses, after pointing it at the actual DB dir.
+VERSION_COMMAND="python -c 'from eggnogmapper.common import set_data_path, get_full_version_info; set_data_path(\"$db_dir\"); print(get_full_version_info())'"
+
 # Load the software environment
 load_env   # Note: reads the env_type/conda_path/container_* globals, takes no args
 [[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
@@ -222,11 +227,6 @@ for db_file in eggnog.db eggnog_proteins.dmnd; do
     [[ ! -s "$db_dir"/"$db_file" ]] &&
         die "Database dir $db_dir has no $db_file - rerun download/dl-eggnog3.sh"
 done
-
-# emapper.py --version prints its version and exits before it processes --data_dir,
-# so it looks for the DB in its install dir and always reports 'DB version: unknown'.
-# Call the same function it uses, after pointing it at the actual DB dir.
-VERSION_COMMAND="python -c 'from eggnogmapper.common import set_data_path, get_full_version_info; set_data_path(\"$db_dir\"); print(get_full_version_info())'"
 
 # Warn if the output dir already holds results from a previous run
 check_outdir "$outdir"
