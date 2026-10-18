@@ -5,7 +5,10 @@
 #
 # The protein ID comes from the CDS 'protein_id' attribute when there is one
 # (NCBI style), and otherwise from the transcript ID, which is what gffread
-# writes into its protein FASTA headers. IDs that are absent from the proteome
+# writes into its protein FASTA headers. In a file that uses protein_id, a CDS
+# without one is skipped rather than given a made-up ID (in RefSeq GFF3s those
+# are e.g. V_gene_segment loci, with CDS features but no protein in the FASTA).
+# Other IDs that are absent from the proteome
 # FASTA fall out later, when longest_tx.sh joins this table against the
 # isoform-length table.
 #
@@ -24,15 +27,18 @@ function attr(s, key,   re, v) {
 BEGIN { FS = "\t"; OFS = "\t" }
 
 /^#/ { next }
+NF < 9 { next }
 { gsub(/\r$/, "", $9) }
 
-# Pass 1: transcript ID -> gene ID
+# Pass 1: transcript ID -> gene ID, and whether the file uses protein_id at all
 FNR == NR {
     if ($3 == "mRNA" || $3 == "transcript") {
         id = attr($9, "ID")
         par = attr($9, "Parent")
         sub(/,.*/, "", par)
         if (id != "" && par != "") tx2gene[id] = par
+    } else if ($3 == "CDS" && attr($9, "protein_id") != "") {
+        uses_protein_id = 1
     }
     next
 }
@@ -43,7 +49,10 @@ $3 == "CDS" {
     sub(/,.*/, "", tx)
     if (tx == "") next
     prot = attr($9, "protein_id")
-    if (prot == "") prot = tx
+    if (prot == "") {
+        if (uses_protein_id) next
+        prot = tx
+    }
     gene = (tx in tx2gene) ? tx2gene[tx] : tx
     print gene, prot
 }
