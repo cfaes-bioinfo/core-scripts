@@ -183,9 +183,12 @@ done
 [[ "$env_type" == "container" && -z "$container_url" && -z "$container_path" ]] &&
     die "No container: set 'container_url' in this script or use --container_url/--container_path" "$all_opts"
 
-# Load software
-load_env   # Note: reads the env_type/conda_path/container_* globals, takes no args
-[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
+# Print version info and exit, if requested (this needs the software env loaded)
+if [[ "$version_only" == true ]]; then
+    load_env
+    print_version "$VERSION_COMMAND"
+    exit 0
+fi
 
 # Check options provided to the script
 [[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
@@ -196,7 +199,9 @@ load_env   # Note: reads the env_type/conda_path/container_* globals, takes no a
 check_outdir "$outdir"
 
 # Define outputs based on script parameters
-LOG_DIR="$outdir"/logs
+# NOTE: LOG_DIR is made absolute so that log paths keep resolving if the
+#       script (or the tool) changes the working dir later on
+LOG_DIR=$(realpath -m "$outdir")/logs
 mkdir -p "$LOG_DIR"
 file_id=$(basename "$infile" | sed -E 's/\.(fa|fasta|fna)(\.gz)?$//')
 out_gff="$outdir"/"$file_id".rrna.gff3
@@ -215,6 +220,7 @@ echo "Working directory:                        $PWD"
 echo
 echo "Input file:                               $infile"
 echo "Output dir:                               $outdir"
+echo "Temp dir (\$TMPDIR):                       ${TMPDIR:-<unset>}"
 echo "Kingdom:                                  $kingdom"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file:"
@@ -225,6 +231,9 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 #                               RUN
 # ==============================================================================
+# Load the software environment
+load_env
+
 # nhmmer (called internally by barrnap) guesses the target FASTA's alphabet
 # from only a short prefix of its first sequence, and has no flag to force it.
 # If a contig starts with a long, skewed low-complexity run missing one of the

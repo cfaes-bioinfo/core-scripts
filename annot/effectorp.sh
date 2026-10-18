@@ -1,248 +1,260 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 #SBATCH --account=PAS0471
 #SBATCH --time=1:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-type=FAIL
 #SBATCH --job-name=effectorp
-#SBATCH --output=slurm-effectorp-%j.out
+#SBATCH --output=slurm-%x-%j.out
 
-# ==============================================================================
-#                                   FUNCTIONS
-# ==============================================================================
-# Help function
-Print_help() {
-    echo
-    echo "======================================================================"
-    echo "                            $0"
-    echo "     RUN EFFECTORP 3.0 TO DETECT EFFECTORS IN FUNGI AND OOMYCETES"
-    echo "======================================================================"
-    echo
-    echo "USAGE:"
-    echo "  sbatch $0 -i <input FASTA> -o <output dir> [...]"
-    echo "  bash $0 -h"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile     <file>  Input file: protein FASTA (secretome)"
-    echo "                          Run EffectorP on secreted proteins only, as IDed with SignalP and (Deep)TMHMM"
-    echo "  -o/--outdir     <dir>   Output dir (will be created if needed)"
-    echo
-    echo "OTHER KEY OPTIONS:"
-    echo "  --fungal_mode           Run EffectorP in fungal mode ('-f' option)  [default: off => oomycete mode]"
-    echo "  --more_args     <str>   Quoted string with additional argument(s) to pass to EffectorP"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
-    echo "  --debug                 Run the script in debug mode (print all code)"
-    echo "  -h                      Print this help message and exit"
-    echo "  --help                  Print the help for EffectorP and exit"
-    echo "  -v/--version            Print the version of EffectorP and exit"
-    echo
-    echo "OUTPUT:"
-    echo "  - A tab-delimited table with predictions to <outdir>/..."
-    echo "  - A FASTA with predicted effectors to <outdir>/..."
-    echo "  - A FASTA with predicted non-effectors to <outdir>/..."
-    echo
-    echo "EXAMPLE COMMANDS:"
-    echo "  sbatch $0 -i results/braker/proteome.fa -o results/effectorP"
-    echo
-    echo "SOFTWARE DOCUMENTATION:"
-    echo "  - Docs: https://github.com/fteufel/signalp-6.0/blob/main/installation_instructions.md"
-    echo "  - Paper: https://apsjournals.apsnet.org/doi/10.1094/MPMI-08-21-0201-R"
-    echo
-}
-
-# Load software
-Load_software() {
-    EFFECTOR_P=/fs/ess/PAS0471/jelmer/software/EffectorP-3.0/EffectorP.py
-}
-
-# Print version
-Print_version() {
-    set +e
-    Load_software
-    python "$EFFECTOR_P" --help | sed -n 3p
-    set -e
-}
-
-# Print help for the focal program
-Print_help_program() {
-    Load_software
-    python "$EFFECTOR_P" --help
-}
-
-# Print SLURM job resource usage info
-Resource_usage() {
-    echo
-    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
-    echo
-}
-
-# Print SLURM job requested resources
-Print_resources() {
-    set +u
-    echo "# SLURM job information:"
-    echo "Account (project):    $SLURM_JOB_ACCOUNT"
-    echo "Job ID:               $SLURM_JOB_ID"
-    echo "Job name:             $SLURM_JOB_NAME"
-    echo "Memory (MB per node): $SLURM_MEM_PER_NODE"
-    echo "CPUs (per task):      $SLURM_CPUS_PER_TASK"
-    [[ "$SLURM_NTASKS" != 1 ]] && echo "Nr of tasks:          $SLURM_NTASKS"
-    [[ -n "$SBATCH_TIMELIMIT" ]] && echo "Time limit:           $SBATCH_TIMELIMIT"
-    echo "======================================================================"
-    echo
-    set -u
-}
-
-# Resource usage information
-Time() {
-    /usr/bin/time -f \
-        '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
-        "$@"
-}   
-
-# Exit upon error with a message
-Die() {
-    error_message=${1}
-    error_args=${2-none}
-    
-    echo >&2
-    echo "=====================================================================" >&2
-    date
-    printf "$0: ERROR: %s\n" "$error_message" >&2
-    echo -e "\nFor help, run this script with the '-h' option" >&2
-    echo "For example, 'bash mcic-scripts/qc/fastqc.sh -h'" >&2
-    if [[ "$error_args" != "none" ]]; then
-        echo -e "\nArguments passed to the script:" >&2
-        echo "$error_args" >&2
-    fi
-    echo -e "\nEXITING..." >&2
-    echo "=====================================================================" >&2
-    echo >&2
-    exit 1
-}
-
+# Strict Bash settings
+set -euo pipefail
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
-# Option defaults
-fungal_mode=false && fungal_arg=""
+# Constants - generic
+DESCRIPTION="Run EffectorP 3.0 to detect effectors in fungi and oomycetes.
+Run it on secreted proteins only, as identified with SignalP and (Deep)TMHMM."
+SCRIPT_VERSION="2026-10-18"
+SCRIPT_AUTHOR="Jelmer Poelstra"
+REPO_URL=https://github.com/mcic-osu/mcic-scripts
+FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
+TOOL_BINARY="python /fs/ess/PAS0471/jelmer/software/EffectorP-3.0/EffectorP.py"
+TOOL_NAME=EffectorP
+TOOL_DOCS=https://github.com/JanaSperschneider/EffectorP-3.0
+VERSION_COMMAND="$TOOL_BINARY --help | sed -n 3p"   # EffectorP has no --version
 
-debug=false
-dryrun=false && e=""
-slurm=true
+# Defaults - generic
+env_type=none               # 'conda' / 'container' / 'none'
+container_url=
+container_dir="$HOME/containers" # Where to download a container to (if needed)
+container_path=             # Full path to a pre-downloaded container image
+conda_path=
 
+# Defaults - tool parameters
+fungal_mode=false           # EffectorP's oomycete mode is the default
+
+# ==============================================================================
+#                                   FUNCTIONS
+# ==============================================================================
+script_help() {
+    echo -e "
+                        $0
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL
+            =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+
+USAGE / EXAMPLE COMMANDS:
+  - Basic usage example:
+      sbatch $0 -i results/braker/proteome.fa -o results/effectorP
+  - Run in fungal mode:
+      sbatch $0 -i results/braker/proteome.fa -o results/effectorP --fungal_mode
+  - Pass extra options to $TOOL_NAME (note the quoting):
+      sbatch $0 -i results/braker/proteome.fa -o results/effectorP --more_opts \"--some-opt 'a value'\"
+
+REQUIRED OPTIONS:
+  -i/--infile         <file>  Input protein FASTA (secretome)
+                                Run EffectorP on secreted proteins only,
+                                as IDed with SignalP and (Deep)TMHMM
+  -o/--outdir         <dir>   Output dir (will be created if needed)
+
+OTHER KEY OPTIONS:
+  --fungal_mode               Run EffectorP in fungal mode ('-f' option)    [default: off => oomycete mode]
+  --more_opts         <str>   Quoted string with one or more additional options
+                              for $TOOL_NAME
+
+OUTPUT:
+  <outdir>/table.txt          - Tab-delimited table with predictions
+  <outdir>/effectors.fa       - FASTA with predicted effectors
+  <outdir>/noneffectors.fa    - FASTA with predicted non-effectors
+
+  Alongside, '<outdir>/logs' will contain:
+    command.txt     - The command that was run, plus this script's Git commit
+    versions.txt    - Versions of this script and of $TOOL_NAME
+    shell_env.txt   - The shell environment (credential-like values redacted)
+    conda_env.yml   - The Conda environment (when using Conda)
+    slurm-*.out     - A copy of the Slurm log (when run as a Slurm job)
+
+UTILITY OPTIONS:
+  --env_type          <str>   Software environment: 'conda', 'container'        [default: $env_type]
+                              (Singularity/Apptainer), or 'none' (tool must
+                              already be available in your PATH)
+  --container_url     <str>   URL/URI to download a container from              [default: ${container_url:-none}]
+  --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
+  --container_path    <file>  Local container image file ('.sif') to use        [default: ${container_path:-none}]
+  --conda_path        <dir>   Full path to a Conda environment to use           [default: ${conda_path:-none}]
+  -h/--help                   Print this help message
+  -v/--version                Print script and $TOOL_NAME versions
+
+TOOL DOCUMENTATION:
+  $TOOL_DOCS
+  Paper: https://apsjournals.apsnet.org/doi/10.1094/MPMI-08-21-0201-R
+"
+}
+
+# Function to source the script with Bash functions
+source_function_script() {
+    local is_slurm=${1:-false}
+
+    # Determine the location of this script, and based on that, the function script
+    if [[ "$is_slurm" == true ]]; then
+        script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
+        script_dir=$(dirname "$script_path")
+        SCRIPT_NAME=$(basename "$script_path")
+    else
+        script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+        SCRIPT_NAME=$(basename "$0")
+    fi
+    function_script_name="$(basename "$FUNCTION_SCRIPT_URL")"
+    function_script_path="$script_dir"/../dev/"$function_script_name"
+
+    # Download the function script if needed, then source it
+    if [[ -s "$function_script_path" ]]; then
+        source "$function_script_path"
+    else
+        if [[ ! -s "$function_script_name" ]]; then
+            echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+            # Download to a temp file, then move into place, so that concurrent
+            # jobs can never source a half-written file
+            tmp_script=$(mktemp "$function_script_name".XXXXXX)
+            if ! wget -q "$FUNCTION_SCRIPT_URL" -O "$tmp_script"; then
+                rm -f "$tmp_script"
+                echo "ERROR: Failed to download $FUNCTION_SCRIPT_URL" >&2
+                exit 1
+            fi
+            mv -f "$tmp_script" "$function_script_name"
+        fi
+        source "$function_script_name"
+    fi
+
+    # Make sure the functions were really loaded
+    if ! declare -F log_time check_val >/dev/null; then
+        echo "ERROR: Sourced $function_script_name but its functions are missing" >&2
+        echo "       (an outdated copy may be cached - try deleting it)" >&2
+        exit 1
+    fi
+}
+
+# Check if this is a SLURM job, then load the Bash functions
+if [[ -z "${SLURM_JOB_ID:-}" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script "$IS_SLURM"
+
+# Report clearly if this script exits with a non-zero status
+trap report_on_exit EXIT
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
-# Placeholder defaults
-infile=""
-outdir=""
-more_args=""
+# Initiate variables
+version_only=false  # When true, just print tool & script version info and exit
+infile=
+outdir=
+more_opts=
+threads=
 
-# Parse command-line args
-all_args="$*"
-while [ "$1" != "" ]; do
+# Parse command-line options
+all_opts="$*"
+all_opts_q=$(printf '%q ' "$@")   # Shell-quoted, so it can be re-run exactly
+while [[ $# -gt 0 ]]; do
     case "$1" in
-        -i | --infile )     shift && infile=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
+        -i | --infile )     check_val "$1" "${2:-}"; shift; infile=$1 ;;
+        -o | --outdir )     check_val "$1" "${2:-}"; shift; outdir=$1 ;;
         --fungal_mode )     fungal_mode=true ;;
-        --more_args )       shift && more_args=$1 ;;
-        -v | -v | --version )    Print_version; exit 0 ;;
-        -h )                Print_help; exit 0 ;;
-        --help )            Print_help_program; exit 0;;
-        --dryrun )          dryrun=true && e="echo ";;
-        --debug )           debug=true ;;
-        * )                 Die "Invalid option $1" "$all_args" ;;
+        --more_opts )       check_val "$1" "${2:-}" lax; shift; more_opts=$1 ;;
+        --env_type )        check_val "$1" "${2:-}"; shift; env_type=$1 ;;
+        --conda_path )      check_val "$1" "${2:-}"; shift; conda_path=$1 ;;
+        --container_dir )   check_val "$1" "${2:-}"; shift; container_dir=$1 ;;
+        --container_url )   check_val "$1" "${2:-}"; shift; container_url=$1 ;;
+        --container_path )  check_val "$1" "${2:-}"; shift; container_path=$1 ;;
+        -h | --help )       script_help; exit 0 ;;
+        -v | --version)     version_only=true ;;
+        * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
 done
 
-
 # ==============================================================================
-#                          OTHER SETUP
+#                          INFRASTRUCTURE SETUP
 # ==============================================================================
-# In debugging mode, print all commands
-[[ "$debug" = true ]] && set -o xtrace
+# Check software env
+[[ -z "$TOOL_BINARY" ]] && die "TOOL_BINARY has not been set in this script"
+[[ "$env_type" == "conda" && -z "$conda_path" ]] &&
+    die "No Conda env: set 'conda_path' in this script or use --conda_path" "$all_opts"
+[[ "$env_type" == "container" && -z "$container_url" && -z "$container_path" ]] &&
+    die "No container: set 'container_url' in this script or use --container_url/--container_path" "$all_opts"
 
-# Check if this is a SLURM job
-[[ -z "$SLURM_JOB_ID" ]] && slurm=false
+# Print version info and exit, if requested (this needs the software env loaded)
+if [[ "$version_only" == true ]]; then
+    load_env
+    print_version "$VERSION_COMMAND"
+    exit 0
+fi
 
-# Bash script settings
-set -euo pipefail
+# Check options provided to the script
+[[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
+[[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
+[[ ! -f "$infile" ]] && die "Input file $infile does not exist"
 
-# Load software
-[[ "$dryrun" = false ]] && Load_software
+# Warn if the output dir already holds results from a previous run
+check_outdir "$outdir"
 
-# Check input
-[[ "$infile" = "" ]] && Die "Please specify an input file with -i/--infile" "$all_args"
-[[ "$outdir" = "" ]] && Die "Please specify an output dir with -o/--outdir" "$all_args"
-[[ ! -f "$infile" ]] && Die "Input file $infile does not exist"
-
-# Fungal mode arg
-[[ "$fungal_mode" = true ]] && fungal_arg="-f"
-
-# Define output files
+# Define outputs based on script parameters
+# NOTE: LOG_DIR is made absolute so that log paths keep resolving if the
+#       script (or the tool) changes the working dir later on
+LOG_DIR=$(realpath -m "$outdir")/logs
+mkdir -p "$LOG_DIR"
 table_out="$outdir"/table.txt
 effector_fa="$outdir"/effectors.fa
 noneffector_fa="$outdir"/noneffectors.fa
 
-# Report
-echo
+# Fungal mode option
+fungal_opt=
+[[ "$fungal_mode" == true ]] && fungal_opt="-f"
+
+# Record how this script was called (and, under Slurm, which job ran it)
+log_provenance "$LOG_DIR"
+
+# ==============================================================================
+#                         REPORT PARSED OPTIONS
+# ==============================================================================
+log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
-echo "                   STARTING SCRIPT EFFECTORP.SH"
-date
-echo "=========================================================================="
-echo "All arguments to this script:     $all_args"
-echo "Input file:                       $infile"
-echo "Output dir:                       $outdir"
-[[ $more_args != "" ]] && echo "Other arguments for EffectorP:    $more_args"
+echo "All options passed to this script:        $all_opts"
+echo "Working directory:                        $PWD"
 echo
-echo "Listing the input file(s):"
+echo "Input file:                               $infile"
+echo "Output dir:                               $outdir"
+echo "Temp dir (\$TMPDIR):                       ${TMPDIR:-<unset>}"
+echo "Fungal mode:                              $fungal_mode"
+[[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
+log_time "Listing the input file(s):"
 ls -lh "$infile"
-[[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
-echo "=========================================================================="
-
-# Print reserved resources
-[[ "$slurm" = true ]] && Print_resources
-
+set_threads "$IS_SLURM"
+[[ "$IS_SLURM" == true ]] && slurm_resources
 
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-# Create the output directory
-echo -e "\n# Creating the output directories..."
-${e}mkdir -pv "$outdir"/logs
+# Load the software environment
+load_env
 
-# Run
-echo -e "\n# Now running EffectorP..."
-${e}Time \
-    python "$EFFECTOR_P" \
-    -i "$infile" \
-    -o "$table_out" \
-    -E "$effector_fa" \
-    -N "$noneffector_fa" \
-    $fungal_arg \
-    $more_args
-
+# Run the tool
+log_time "Running $TOOL_NAME..."
+eval runstats "$TOOL_BINARY" \
+    -i "$(printf '%q' "$infile")" \
+    -o "$(printf '%q' "$table_out")" \
+    -E "$(printf '%q' "$effector_fa")" \
+    -N "$(printf '%q' "$noneffector_fa")" \
+    $fungal_opt \
+    $more_opts
 
 # ==============================================================================
 #                               WRAP-UP
 # ==============================================================================
-echo
-echo "========================================================================="
-if [[ "$dryrun" = false ]]; then
-    echo "# Version used:"
-    Print_version | tee "$outdir"/logs/version.txt
-    echo -e "\n# Listing files in the output dir:"
-    ls -lhd "$PWD"/"$outdir"/*
-    [[ "$slurm" = true ]] && Resource_usage
-fi
-echo "# Done with script"
-date
-echo
+log_time "Listing files in the output dir:"
+ls -lhd "$(realpath "$outdir")"/* 2>/dev/null ||
+    log_time "WARNING: No files found in the output dir $outdir"
+final_reporting

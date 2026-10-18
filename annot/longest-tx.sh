@@ -18,7 +18,7 @@ DESCRIPTION="Create a longest-transcript/isoform proteome FASTA.
   IDed by .t1/.p1-style suffices
 - If multiple isoforms have the same length, the first one is chosen
 "
-SCRIPT_VERSION="2026-08-29"
+SCRIPT_VERSION="2026-10-18"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -226,6 +226,7 @@ log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options passed to this script:        $all_opts"
 echo "Output dir:                               $outdir"
+echo "Temp dir (\$TMPDIR):                       ${TMPDIR:-<unset>}"
 echo "Input FASTA file:                         $infile"
 [[ -n "$gtf" ]] && echo "Input annotation file:                    $gtf"
 log_time "Listing the input file(s):"

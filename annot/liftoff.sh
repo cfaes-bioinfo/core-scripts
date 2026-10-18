@@ -3,9 +3,12 @@
 #SBATCH --time=4:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-type=FAIL
 #SBATCH --job-name=liftoff
-#SBATCH --output=slurm-liftoff-%j.out
+#SBATCH --output=slurm-%x-%j.out
+
+# Strict Bash settings
+set -euo pipefail
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
@@ -14,7 +17,7 @@
 DESCRIPTION="
 Run Liftoff to transfer gene annotations from a reference assembly to a target assembly.
 Always runs with options -copies and -polish."
-SCRIPT_VERSION="2026-05-23"
+SCRIPT_VERSION="2026-10-18"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -23,14 +26,14 @@ TOOL_NAME=Liftoff
 TOOL_DOCS=https://github.com/agshumate/Liftoff
 VERSION_COMMAND="$TOOL_BINARY --version"
 
-# Defaults - generics
-env_type=container                  # Use a 'conda' env or a Singularity 'container'
-conda_path=
+# Defaults - generic
+env_type=container          # 'conda' / 'container' / 'none'
 container_url=oras://community.wave.seqera.io/library/liftoff_liftofftools:7a69d821dc62677b
-container_dir="$HOME/containers"
-container_path=
+container_dir="$HOME/containers" # Where to download a container to (if needed)
+container_path=             # Full path to a pre-downloaded container image
+conda_path=
 
-# Constants/hard-coded - tool parameters
+# Constants - tool parameters
 # Always runs with options -copies and -polish
 
 # Defaults - tool parameters
@@ -49,47 +52,60 @@ script_help() {
 
 DESCRIPTION:
 $DESCRIPTION
-    
+
 USAGE / EXAMPLE COMMANDS:
   - Basic usage example:
-            sbatch $0 \
-                -i results/asm/novel_genome.fa \
-                --ref_fasta data/ref/soybase/glyma.Wm82.gnm1.FCtY.genome_main.fna \
-                --ref_gff data/ref/soybase/glyma.Wm82.gnm1.ann1.DvBy.gene_models_main.gff3 \
-                -o results/liftoff/novel_from_v1
-    
+      sbatch $0 \\
+          -i results/asm/novel_genome.fa \\
+          --ref_fasta data/ref/soybase/glyma.Wm82.gnm1.FCtY.genome_main.fna \\
+          --ref_gff data/ref/soybase/glyma.Wm82.gnm1.ann1.DvBy.gene_models_main.gff3 \\
+          -o results/liftoff/novel_from_v1
+  - Pass extra options to $TOOL_NAME (note the quoting):
+      sbatch $0 -i novel_genome.fa --ref_fasta ref.fna --ref_gff ref.gff3 \\
+          -o results/liftoff --more_opts \"--some-opt 'a value'\"
+
 REQUIRED OPTIONS:
   -i/--infile         <file>  Target assembly FASTA (novel genome)
   --ref_fasta         <file>  Reference assembly FASTA used by the source annotation
   --ref_gff           <file>  Reference annotation GFF/GTF to transfer
   -o/--outdir         <dir>   Output dir (will be created if needed)
-    
+
 OTHER KEY OPTIONS:
-  --coverage          <float> Minimum feature coverage (-a)                    [default: $coverage]
-  --sequence_identity <float> Minimum sequence identity (-s)                   [default: $sequence_identity]
+  --coverage          <float> Minimum feature coverage (-a)                     [default: $coverage]
+  --sequence_identity <float> Minimum sequence identity (-s)                    [default: $sequence_identity]
   --exclude_partial           Pass Liftoff -exclude_partial
   --more_opts         <str>   Quoted string with one or more additional options
                               for $TOOL_NAME
-    
+
+OUTPUT:
+  Alongside the tool's own output, '<outdir>/logs' will contain:
+    command.txt     - The command that was run, plus this script's Git commit
+    versions.txt    - Versions of this script and of $TOOL_NAME
+    shell_env.txt   - The shell environment (credential-like values redacted)
+    conda_env.yml   - The Conda environment (when using Conda)
+    slurm-*.out     - A copy of the Slurm log (when run as a Slurm job)
+
 UTILITY OPTIONS:
-  --env_type          <str>   Whether to use a Singularity/Apptainer container  [default: $env_type]
-                              ('container') or a Conda environment ('conda') 
-  --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
+  --env_type          <str>   Software environment: 'conda', 'container'        [default: $env_type]
+                              (Singularity/Apptainer), or 'none' (tool must
+                              already be available in your PATH)
+  --container_url     <str>   URL/URI to download a container from              [default: ${container_url:-none}]
   --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
-  --container_path    <file>  Local container image file ('.sif') to use        [default (if any): $container_path]
-  --conda_path        <dir>   Full path to a Conda environment to use           [default (if any): $conda_path]
+  --container_path    <file>  Local container image file ('.sif') to use        [default: ${container_path:-none}]
+  --conda_path        <dir>   Full path to a Conda environment to use           [default: ${conda_path:-none}]
   -h/--help                   Print this help message
   -v/--version                Print script and $TOOL_NAME versions
-    
+
 TOOL DOCUMENTATION:
   $TOOL_DOCS
 "
 }
-
 # Function to source the script with Bash functions
 source_function_script() {
+    local is_slurm=${1:-false}
+
     # Determine the location of this script, and based on that, the function script
-    if [[ "$IS_SLURM" == true ]]; then
+    if [[ "$is_slurm" == true ]]; then
         script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
         script_dir=$(dirname "$script_path")
         SCRIPT_NAME=$(basename "$script_path")
@@ -101,20 +117,38 @@ source_function_script() {
     function_script_path="$script_dir"/../dev/"$function_script_name"
 
     # Download the function script if needed, then source it
-    if [[ -f "$function_script_path" ]]; then
+    if [[ -s "$function_script_path" ]]; then
         source "$function_script_path"
     else
-        if [[ ! -f "$function_script_name" ]]; then
+        if [[ ! -s "$function_script_name" ]]; then
             echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
-            wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script_name"
+            # Download to a temp file, then move into place, so that concurrent
+            # jobs can never source a half-written file
+            tmp_script=$(mktemp "$function_script_name".XXXXXX)
+            if ! wget -q "$FUNCTION_SCRIPT_URL" -O "$tmp_script"; then
+                rm -f "$tmp_script"
+                echo "ERROR: Failed to download $FUNCTION_SCRIPT_URL" >&2
+                exit 1
+            fi
+            mv -f "$tmp_script" "$function_script_name"
         fi
         source "$function_script_name"
+    fi
+
+    # Make sure the functions were really loaded
+    if ! declare -F log_time check_val >/dev/null; then
+        echo "ERROR: Sourced $function_script_name but its functions are missing" >&2
+        echo "       (an outdated copy may be cached - try deleting it)" >&2
+        exit 1
     fi
 }
 
 # Check if this is a SLURM job, then load the Bash functions
-if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
-source_function_script $IS_SLURM
+if [[ -z "${SLURM_JOB_ID:-}" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script "$IS_SLURM"
+
+# Report clearly if this script exits with a non-zero status
+trap report_on_exit EXIT
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
@@ -130,21 +164,22 @@ threads=
 
 # Parse command-line options
 all_opts="$*"
-while [ "$1" != "" ]; do
+all_opts_q=$(printf '%q ' "$@")   # Shell-quoted, so it can be re-run exactly
+while [[ $# -gt 0 ]]; do
     case "$1" in
-        -i | --infile )     shift && infile=$1 ;;
-        --ref_fasta )       shift && ref_fasta=$1 ;;
-        --ref_gff )         shift && ref_gff=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
-        --coverage )        shift && coverage=$1 ;;
-        --sequence_identity ) shift && sequence_identity=$1 ;;
+        -i | --infile )     check_val "$1" "${2:-}"; shift; infile=$1 ;;
+        --ref_fasta )       check_val "$1" "${2:-}"; shift; ref_fasta=$1 ;;
+        --ref_gff )         check_val "$1" "${2:-}"; shift; ref_gff=$1 ;;
+        -o | --outdir )     check_val "$1" "${2:-}"; shift; outdir=$1 ;;
+        --coverage )        check_val "$1" "${2:-}"; shift; coverage=$1 ;;
+        --sequence_identity ) check_val "$1" "${2:-}"; shift; sequence_identity=$1 ;;
         --exclude_partial ) exclude_partial=true ;;
-        --more_opts )       shift && more_opts=$1 ;;
-        --env_type )        shift && env_type=$1 ;;
-        --conda_path )      shift && conda_path=$1 ;;
-        --container_dir )   shift && container_dir=$1 ;;
-        --container_url )   shift && container_url=$1 ;;
-        --container_path )  shift && container_path=$1 ;;
+        --more_opts )       check_val "$1" "${2:-}" lax; shift; more_opts=$1 ;;
+        --env_type )        check_val "$1" "${2:-}"; shift; env_type=$1 ;;
+        --conda_path )      check_val "$1" "${2:-}"; shift; conda_path=$1 ;;
+        --container_dir )   check_val "$1" "${2:-}"; shift; container_dir=$1 ;;
+        --container_url )   check_val "$1" "${2:-}"; shift; container_url=$1 ;;
+        --container_path )  check_val "$1" "${2:-}"; shift; container_path=$1 ;;
         -h | --help )       script_help; exit 0 ;;
         -v | --version)     version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
@@ -155,12 +190,19 @@ done
 # ==============================================================================
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
-# Strict Bash settings
-set -euo pipefail
+# Check software env
+[[ -z "$TOOL_BINARY" ]] && die "TOOL_BINARY has not been set in this script"
+[[ "$env_type" == "conda" && -z "$conda_path" ]] &&
+    die "No Conda env: set 'conda_path' in this script or use --conda_path" "$all_opts"
+[[ "$env_type" == "container" && -z "$container_url" && -z "$container_path" ]] &&
+    die "No container: set 'container_url' in this script or use --container_url/--container_path" "$all_opts"
 
-# Load software
-load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$container_url"
-[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
+# Print version info and exit, if requested (this needs the software env loaded)
+if [[ "$version_only" == true ]]; then
+    load_env
+    print_version "$VERSION_COMMAND"
+    exit 0
+fi
 
 # Check options provided to the script
 [[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
@@ -171,11 +213,14 @@ load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$containe
 [[ ! -f "$ref_fasta" ]] && die "Input file $ref_fasta does not exist"
 [[ ! -f "$ref_gff" ]] && die "Input file $ref_gff does not exist"
 
-# Make file paths absolute
+# Warn if the output dir already holds results from a previous run
+check_outdir "$outdir"
+
+# Make file paths absolute, because the script moves into the output dir
 infile=$(realpath "$infile")
 ref_fasta=$(realpath "$ref_fasta")
 ref_gff=$(realpath "$ref_gff")
-[[ ! "$outdir" =~ ^/ ]] && outdir="$PWD"/"$outdir"
+outdir=$(realpath -m "$outdir")
 
 # Define outputs based on script parameters
 LOG_DIR="$outdir"/logs
@@ -193,6 +238,9 @@ intermediate_dir="$outdir"/intermediate_files
 exclude_partial_opt=
 [[ "$exclude_partial" == true ]] && exclude_partial_opt="-exclude_partial"
 
+# Record how this script was called (and, under Slurm, which job ran it)
+log_provenance "$LOG_DIR"
+
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
 # ==============================================================================
@@ -205,6 +253,7 @@ echo "Target assembly FASTA:                    $infile"
 echo "Reference assembly FASTA:                 $ref_fasta"
 echo "Reference annotation GFF:                 $ref_gff"
 echo "Output dir:                               $outdir"
+echo "Temp dir (\$TMPDIR):                       ${TMPDIR:-<unset>}"
 echo "Lifted annotation output:                 $out_gff_path"
 echo "Unmapped features output:                 $unmapped_path"
 echo "Minimum coverage (-a):                    $coverage"
@@ -221,16 +270,20 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 #                               RUN
 # ==============================================================================
+# Load the software environment
+load_env
+
+# Run the tool from within the output dir
 cd "$outdir" || die "Can't change to output dir $outdir"
 
 log_time "Running $TOOL_NAME..."
-runstats $TOOL_BINARY \
-    "$infile" \
-    "$ref_fasta" \
-    -g "$ref_gff" \
-    -o "$out_gff_path" \
-    -u "$unmapped_path" \
-    -dir "$intermediate_dir" \
+eval runstats "$TOOL_BINARY" \
+    "$(printf '%q' "$infile")" \
+    "$(printf '%q' "$ref_fasta")" \
+    -g "$(printf '%q' "$ref_gff")" \
+    -o "$(printf '%q' "$out_gff_path")" \
+    -u "$(printf '%q' "$unmapped_path")" \
+    -dir "$(printf '%q' "$intermediate_dir")" \
     -p "$threads" \
     -a "$coverage" \
     -s "$sequence_identity" \
@@ -243,5 +296,6 @@ runstats $TOOL_BINARY \
 #                               WRAP-UP
 # ==============================================================================
 log_time "Listing files in the output dir:"
-ls -lhd "$(realpath "$outdir")"/*
-final_reporting "$LOG_DIR"
+ls -lhd "$outdir"/* 2>/dev/null ||
+    log_time "WARNING: No files found in the output dir $outdir"
+final_reporting

@@ -178,6 +178,7 @@ threads=
 
 # Parse command-line options
 all_opts="$*"
+all_opts_q=$(printf '%q ' "$@")   # Shell-quoted, so it can be re-run exactly
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -i | --infile )      check_val "$1" "${2:-}"; shift; infile=$1 ;;
@@ -212,9 +213,12 @@ done
 # Call the same function it uses, after pointing it at the actual DB dir.
 VERSION_COMMAND="python -c 'from eggnogmapper.common import set_data_path, get_full_version_info; set_data_path(\"$db_dir\"); print(get_full_version_info())'"
 
-# Load the software environment
-load_env   # Note: reads the env_type/conda_path/container_* globals, takes no args
-[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
+# Print version info and exit, if requested (this needs the software env loaded)
+if [[ "$version_only" == true ]]; then
+    load_env
+    print_version "$VERSION_COMMAND"
+    exit 0
+fi
 
 # Check options provided to the script
 [[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
@@ -259,6 +263,7 @@ echo
 echo "Input protein FASTA:                      $infile"
 echo "eggNOG database dir:                      $db_dir"
 echo "Output dir:                               $outdir"
+echo "Temp dir (\$TMPDIR):                       ${TMPDIR:-<unset>}"
 echo "Output prefix:                            $prefix"
 echo "Input type:                               $itype"
 echo "DIAMOND sensitivity ceiling:              $sensmode"
@@ -275,6 +280,9 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 #                               RUN
 # ==============================================================================
+# Load the software environment
+load_env
+
 log_time "Running $TOOL_NAME..."
 # '--tax_scope' is left at the tool default (auto_narrow: a per-seed ceiling,
 # Eukaryota for eukaryotic seeds), which suits a eukaryotic proteome

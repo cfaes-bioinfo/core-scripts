@@ -211,9 +211,12 @@ done
 [[ "$env_type" == "container" && -z "$container_url" && -z "$container_path" ]] &&
     die "No container: set 'container_url' in this script or use --container_url/--container_path" "$all_opts"
 
-# Load software
-load_env   # Note: reads the env_type/conda_path/container_* globals, takes no args
-[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
+# Print version info and exit, if requested (this needs the software env loaded)
+if [[ "$version_only" == true ]]; then
+    load_env
+    print_version "$VERSION_COMMAND"
+    exit 0
+fi
 
 # Check options provided to the script
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
@@ -229,7 +232,9 @@ load_env   # Note: reads the env_type/conda_path/container_* globals, takes no a
 check_outdir "$outdir"
 
 # Define outputs based on script parameters
-LOG_DIR="$outdir"/logs
+# NOTE: LOG_DIR is made absolute so that log paths keep resolving if the
+#       script (or the tool) changes the working dir later on
+LOG_DIR=$(realpath -m "$outdir")/logs
 mkdir -p "$LOG_DIR"
 
 # Default the clan file to the one sitting next to the CM database
@@ -257,6 +262,7 @@ echo "Working directory:                        $PWD"
 echo
 echo "Input file:                               $infile"
 echo "Output dir:                               $outdir"
+echo "Temp dir (\$TMPDIR):                       ${TMPDIR:-<unset>}"
 echo "Rfam CM database:                         $db"
 echo "Rfam clan file:                           $clanin"
 echo "Genome size (Mb):                         $genome_mb"
@@ -271,6 +277,9 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 #                               RUN
 # ==============================================================================
+# Load the software environment
+load_env
+
 log_time "Running $TOOL_NAME..."
 eval runstats "$TOOL_BINARY" \
     -Z "$z_value" \

@@ -221,6 +221,8 @@ source_function_script() {
     else
         if [[ ! -s "$function_script_name" ]]; then
             echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+            # Download to a temp file, then move into place, so that concurrent
+            # jobs can never source a half-written file
             tmp_script=$(mktemp "$function_script_name".XXXXXX)
             if ! wget -q "$FUNCTION_SCRIPT_URL" -O "$tmp_script"; then
                 rm -f "$tmp_script"

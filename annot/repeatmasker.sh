@@ -3,16 +3,19 @@
 #SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=64G
-#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-type=FAIL
 #SBATCH --job-name=repeatmasker
-#SBATCH --output=slurm-repeatmasker-%j.out
+#SBATCH --output=slurm-%x-%j.out
+
+# Strict Bash settings
+set -euo pipefail
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run RepeatMasker on a genome assembly to identify and mask repetitive elements."
-SCRIPT_VERSION="2026-07-27"
+SCRIPT_VERSION="2026-10-18"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -21,12 +24,12 @@ TOOL_NAME=RepeatMasker
 TOOL_DOCS=https://www.repeatmasker.org/
 VERSION_COMMAND="$TOOL_BINARY --version"
 
-# Defaults - generics
-env_type=container
-conda_path=
+# Defaults - generic
+env_type=container          # 'conda' / 'container' / 'none'
 container_url=oras://community.wave.seqera.io/library/repeatmasker:4.2.3--bf81e1c6f13e0d00
-container_dir="$HOME/containers"
-container_path=
+container_dir="$HOME/containers" # Where to download a container to (if needed)
+container_path=             # Full path to a pre-downloaded container image
+conda_path=
 
 # ==============================================================================
 #                                   FUNCTIONS
@@ -39,11 +42,13 @@ script_help() {
 
 DESCRIPTION:
 $DESCRIPTION
-    
+
 USAGE / EXAMPLE COMMANDS:
   - Basic usage example:
       sbatch $0 -i results/genome.fa -o results/repeatmasker --genome_lib results/repeatmodeler/GCA_009761285.1-families.fa
-    
+  - Pass extra options to $TOOL_NAME (note the quoting):
+      sbatch $0 -i results/genome.fa -o results/repeatmasker --species oomycetes --more_opts \"-s\"
+
 REQUIRED OPTIONS:
   -i/--infile         <file>  Input FASTA file (genome assembly)
   -o/--outdir         <dir>   Output dir (will be created if needed)
@@ -53,30 +58,40 @@ ONE OF THESE TWO OPTIONS IS REQUIRED (THEY ARE MUTUALLY EXCLUSIVE):
   --species           <str>   Species or taxonomic group name
                               To check which species/groups are available, run, e.g:
                               /fs/ess/PAS0471/jelmer/conda/repeatmasker/share/RepeatMasker/famdb.py names 'oomycetes'
-    
+
 OTHER KEY OPTIONS:
   --more_opts         <str>   Quoted string with one or more additional options
                               for $TOOL_NAME
-    
+
+OUTPUT:
+  Alongside the tool's own output, '<outdir>/logs' will contain:
+    command.txt     - The command that was run, plus this script's Git commit
+    versions.txt    - Versions of this script and of $TOOL_NAME
+    shell_env.txt   - The shell environment (credential-like values redacted)
+    conda_env.yml   - The Conda environment (when using Conda)
+    slurm-*.out     - A copy of the Slurm log (when run as a Slurm job)
+
 UTILITY OPTIONS:
-  --env_type          <str>   Use a Singularity container ('container')         [default: $env_type]
-                              or a Conda environment ('conda') 
-  --conda_path        <dir>   Full path to a Conda environment to use           [default: $conda_path]
+  --env_type          <str>   Software environment: 'conda', 'container'        [default: $env_type]
+                              (Singularity/Apptainer), or 'none' (tool must
+                              already be available in your PATH)
+  --container_url     <str>   URL/URI to download a container from              [default: ${container_url:-none}]
   --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
-  --container_url     <str>   URL to download a container from                  [default (if any): $container_url]
-  --container_path    <file>  Local singularity image file (.sif) to use        [default (if any): $container_path]
+  --container_path    <file>  Local container image file ('.sif') to use        [default: ${container_path:-none}]
+  --conda_path        <dir>   Full path to a Conda environment to use           [default: ${conda_path:-none}]
   -h/--help                   Print this help message
   -v/--version                Print script and $TOOL_NAME versions
-    
+
 TOOL DOCUMENTATION:
   $TOOL_DOCS
 "
 }
-
 # Function to source the script with Bash functions
 source_function_script() {
+    local is_slurm=${1:-false}
+
     # Determine the location of this script, and based on that, the function script
-    if [[ "$IS_SLURM" == true ]]; then
+    if [[ "$is_slurm" == true ]]; then
         script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
         script_dir=$(dirname "$script_path")
         SCRIPT_NAME=$(basename "$script_path")
@@ -88,20 +103,38 @@ source_function_script() {
     function_script_path="$script_dir"/../dev/"$function_script_name"
 
     # Download the function script if needed, then source it
-    if [[ -f "$function_script_path" ]]; then
+    if [[ -s "$function_script_path" ]]; then
         source "$function_script_path"
     else
-        if [[ ! -f "$function_script_name" ]]; then
+        if [[ ! -s "$function_script_name" ]]; then
             echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
-            wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script_name"
+            # Download to a temp file, then move into place, so that concurrent
+            # jobs can never source a half-written file
+            tmp_script=$(mktemp "$function_script_name".XXXXXX)
+            if ! wget -q "$FUNCTION_SCRIPT_URL" -O "$tmp_script"; then
+                rm -f "$tmp_script"
+                echo "ERROR: Failed to download $FUNCTION_SCRIPT_URL" >&2
+                exit 1
+            fi
+            mv -f "$tmp_script" "$function_script_name"
         fi
         source "$function_script_name"
+    fi
+
+    # Make sure the functions were really loaded
+    if ! declare -F log_time check_val >/dev/null; then
+        echo "ERROR: Sourced $function_script_name but its functions are missing" >&2
+        echo "       (an outdated copy may be cached - try deleting it)" >&2
+        exit 1
     fi
 }
 
 # Check if this is a SLURM job, then load the Bash functions
-if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
-source_function_script $IS_SLURM
+if [[ -z "${SLURM_JOB_ID:-}" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script "$IS_SLURM"
+
+# Report clearly if this script exits with a non-zero status
+trap report_on_exit EXIT
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
@@ -110,25 +143,26 @@ source_function_script $IS_SLURM
 version_only=false  # When true, just print tool & script version info and exit
 infile=
 outdir=
-genome_lib=
+genome_lib= && genome_lib_opt=
 species= && species_opt=
 more_opts=
 threads=
 
 # Parse command-line options
 all_opts="$*"
-while [ "$1" != "" ]; do
+all_opts_q=$(printf '%q ' "$@")   # Shell-quoted, so it can be re-run exactly
+while [[ $# -gt 0 ]]; do
     case "$1" in
-        -i | --infile )     shift && infile=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
-        --genome_lib )      shift && genome_lib=$1 ;;
-        --species )         shift && species=$1 ;;
-        --more_opts )       shift && more_opts=$1 ;;
-        --env_type )        shift && env_type=$1 ;;
-        --conda_path )      shift && conda_path=$1 ;;
-        --container_dir )   shift && container_dir=$1 ;;
-        --container_url )   shift && container_url=$1 ;;
-        --container_path )  shift && container_path=$1 ;;
+        -i | --infile )     check_val "$1" "${2:-}"; shift; infile=$1 ;;
+        -o | --outdir )     check_val "$1" "${2:-}"; shift; outdir=$1 ;;
+        --genome_lib )      check_val "$1" "${2:-}"; shift; genome_lib=$1 ;;
+        --species )         check_val "$1" "${2:-}"; shift; species=$1 ;;
+        --more_opts )       check_val "$1" "${2:-}" lax; shift; more_opts=$1 ;;
+        --env_type )        check_val "$1" "${2:-}"; shift; env_type=$1 ;;
+        --conda_path )      check_val "$1" "${2:-}"; shift; conda_path=$1 ;;
+        --container_dir )   check_val "$1" "${2:-}"; shift; container_dir=$1 ;;
+        --container_url )   check_val "$1" "${2:-}"; shift; container_url=$1 ;;
+        --container_path )  check_val "$1" "${2:-}"; shift; container_path=$1 ;;
         -h | --help )       script_help; exit 0 ;;
         -v | --version)     version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
@@ -139,12 +173,19 @@ done
 # ==============================================================================
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
-# Strict Bash settings
-set -euo pipefail
+# Check software env
+[[ -z "$TOOL_BINARY" ]] && die "TOOL_BINARY has not been set in this script"
+[[ "$env_type" == "conda" && -z "$conda_path" ]] &&
+    die "No Conda env: set 'conda_path' in this script or use --conda_path" "$all_opts"
+[[ "$env_type" == "container" && -z "$container_url" && -z "$container_path" ]] &&
+    die "No container: set 'container_url' in this script or use --container_url/--container_path" "$all_opts"
 
-# Load software
-load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$container_url"
-[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
+# Print version info and exit, if requested (this needs the software env loaded)
+if [[ "$version_only" == true ]]; then
+    load_env
+    print_version "$VERSION_COMMAND"
+    exit 0
+fi
 
 # Check options provided to the script
 [[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
@@ -154,17 +195,24 @@ load_env "$env_type" "$conda_path" "$container_dir" "$container_path" "$containe
 [[ -n "$species" ]] && [[ -n "$genome_lib" ]] && die "Both --species and --genome_lib are specified, but you can only use one of these options" "$all_opts"
 [[ -n "$genome_lib" && ! -f "$genome_lib" ]] && die "Input file $genome_lib does not exist"
 
-# Make file paths absolute
+# Warn if the output dir already holds results from a previous run
+check_outdir "$outdir"
+
+# Make file paths absolute, because the script moves into the output dir
 infile=$(realpath "$infile")
-genome_lib=$(realpath "$genome_lib")
-[[ ! "$outdir" =~ ^/ ]] && outdir="$PWD"/"$outdir"
+[[ -n "$genome_lib" ]] && genome_lib=$(realpath "$genome_lib")
+outdir=$(realpath -m "$outdir")
 
 # Define outputs based on script parameters
-LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+LOG_DIR="$outdir"/logs
+mkdir -p "$LOG_DIR"
 
 # Species/genome lib args
-[[ -n "$species" ]] && species_opt="-species $species"
-[[ -n "$genome_lib" ]] && genome_lib_opt="-lib $genome_lib"
+[[ -n "$species" ]] && species_opt="-species $(printf '%q' "$species")"
+[[ -n "$genome_lib" ]] && genome_lib_opt="-lib $(printf '%q' "$genome_lib")"
+
+# Record how this script was called (and, under Slurm, which job ran it)
+log_provenance "$LOG_DIR"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -176,6 +224,7 @@ echo "Working directory:                        $PWD"
 echo
 echo "Input file:                               $infile"
 echo "Output dir:                               $outdir"
+echo "Temp dir (\$TMPDIR):                       ${TMPDIR:-<unset>}"
 [[ -n $genome_lib ]] && echo "Genome database from RepeatModeler:       $genome_lib"
 [[ -n $species ]] && echo "Species name:                             $species"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
@@ -188,20 +237,23 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 #                               RUN
 # ==============================================================================
+# Load the software environment
+load_env
+
 # Move into the output dir
 cd "$outdir" || die "Can't change to output dir $outdir"
 
-# Run
+# Run the tool
 log_time "Running $TOOL_NAME..."
-runstats $TOOL_BINARY \
-    -pa $(( "$threads" / 4 )) \
+eval runstats "$TOOL_BINARY" \
+    -pa $(( threads / 4 > 0 ? threads / 4 : 1 )) \
     -dir . \
     -gff \
     -html \
     $genome_lib_opt \
     $species_opt \
     $more_opts \
-    "$infile"
+    "$(printf '%q' "$infile")"
 
 #? -s  Slow search; 0-5% more sensitive, 2-3 times slower than default
 #? -q  Quick search; 5-10% less sensitive, 2-5 times faster than default
@@ -219,5 +271,6 @@ runstats $TOOL_BINARY \
 #                               WRAP-UP
 # ==============================================================================
 log_time "Listing files in the output dir:"
-ls -lh
-final_reporting "$LOG_DIR"
+ls -lhd "$outdir"/* 2>/dev/null ||
+    log_time "WARNING: No files found in the output dir $outdir"
+final_reporting

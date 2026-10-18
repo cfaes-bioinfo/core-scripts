@@ -192,9 +192,12 @@ done
 [[ "$env_type" == "container" && -z "$container_url" && -z "$container_path" ]] &&
     die "No container: set 'container_url' in this script or use --container_url/--container_path" "$all_opts"
 
-# Load software
-load_env   # Note: reads the env_type/conda_path/container_* globals, takes no args
-[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
+# Print version info and exit, if requested (this needs the software env loaded)
+if [[ "$version_only" == true ]]; then
+    load_env
+    print_version "$VERSION_COMMAND"
+    exit 0
+fi
 
 # Check options provided to the script
 [[ -z "$infile" ]] && die "No input GFF3 specified, do so with -i/--infile" "$all_opts"
@@ -207,7 +210,9 @@ load_env   # Note: reads the env_type/conda_path/container_* globals, takes no a
 check_outdir "$outdir"
 
 # Define outputs based on script parameters
-LOG_DIR="$outdir"/logs
+# NOTE: LOG_DIR is made absolute so that log paths keep resolving if the
+#       script (or the tool) changes the working dir later on
+LOG_DIR=$(realpath -m "$outdir")/logs
 mkdir -p "$LOG_DIR"
 [[ -z "$prefix" ]] && prefix=$(basename "$infile" | sed -E 's/\.(gff3?|gtf)$//')
 cds_out="$outdir"/"$prefix".cds.fna
@@ -229,6 +234,7 @@ echo
 echo "Input GFF3:                               $infile"
 echo "Genome FASTA:                             $genome"
 echo "Output dir:                               $outdir"
+echo "Temp dir (\$TMPDIR):                       ${TMPDIR:-<unset>}"
 echo "Output prefix:                            $prefix"
 [[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input files:"
@@ -239,6 +245,9 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 #                               RUN
 # ==============================================================================
+# Load the software environment
+load_env
+
 # Fail early and clearly on the classic silent-empty-output cause
 log_time "Checking that the GFF3 and the genome use the same sequence IDs..."
 n_shared=$(comm -12 \

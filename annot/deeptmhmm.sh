@@ -5,18 +5,21 @@
 #SBATCH --mem=4G
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name=deeptmhmm
-#SBATCH --output=slurm-deeptmhmm-%j.out
+#SBATCH --output=slurm-%x-%j.out
 
 #! - Can only run 250 proteins at a time
 #! - DeepTMHMM runs on a server which is currently (OCt '24') likely to reject jobs
 #!   especially after repeated attempts.
+
+# Strict Bash settings
+set -euo pipefail
 
 # ==============================================================================
 #                          CONSTANTS AND DEFAULTS
 # ==============================================================================
 # Constants - generic
 DESCRIPTION="Run DeepTMHMM for Transmembrane Topology Prediction and Classification"
-SCRIPT_VERSION="2023-09-29"
+SCRIPT_VERSION="2026-10-18"
 SCRIPT_AUTHOR="Jelmer Poelstra"
 REPO_URL=https://github.com/mcic-osu/mcic-scripts
 FUNCTION_SCRIPT_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/dev/bash_functions.sh
@@ -25,55 +28,71 @@ TOOL_NAME=DeepTMHMM
 TOOL_DOCS=https://dtu.biolib.com/DeepTMHMM
 VERSION_COMMAND="$TOOL_BINARY --version"
 
-# Defaults - generics
-env_type=conda                           # Use a 'conda' env or a Singularity 'container'
-conda_path=/fs/ess/PAS0471/jelmer/conda/deeptmhmm
-container_path=
+# Defaults - generic
+env_type=conda              # 'conda' / 'container' / 'none'
 container_url=
-dl_container=false
-container_dir="$HOME/containers"
-version_only=false                 # When true, just print tool & script version info and exit
+container_dir="$HOME/containers" # Where to download a container to (if needed)
+container_path=             # Full path to a pre-downloaded container image
+conda_path=/fs/ess/PAS0471/jelmer/conda/deeptmhmm
 
 # ==============================================================================
 #                                   FUNCTIONS
 # ==============================================================================
 script_help() {
-    echo -e "\n                          $0"
-    echo "      (v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL)"
-    echo "        =============================================================="
-    echo "DESCRIPTION:"
-    echo "  $DESCRIPTION"
-    echo
-    echo "USAGE / EXAMPLE COMMANDS:"
-    echo "  - Basic usage example:"
-    echo "      sbatch $0 -i results/braker/split/braker1.faa -o results/deeptmhmm"
-    echo
-    echo "REQUIRED OPTIONS:"
-    echo "  -i/--infile         <file>  Input protein FASTA file."
-    echo "                                NOTE: Can only contain 250 or fewer proteins!"
-    echo "                                To split a proteome file, use 'seqkit split2 --by-size 250'"
-    echo "  -o/--outdir         <dir>   Output dir (will be created if needed)"
-    echo
-    echo "UTILITY OPTIONS:"
-    echo "  --env_type               <str>   Use a Singularity container ('container') or a Conda env ('conda') [default: $env_type]"
-    echo "                                (NOTE: If no default '--container_url' is listed below,"
-    echo "                                 you'll have to provide one in order to run the script with a container.)"
-    echo "  --conda_env         <dir>   Full path to a Conda environment to use [default: $conda_path]"
-    echo "  --container_url     <str>   URL to download the container from      [default: $container_url]"
-    echo "                                A container will only be downloaded if an URL is provided with this option, or '--dl_container' is used"
-    echo "  --container_dir     <str>   Dir to download the container to        [default: $container_dir]"
-    echo "  --dl_container              Force a redownload of the container     [default: $dl_container]"
-    echo "  -h/--help                   Print this help message and exit"
-    echo "  -v                          Print the version of this script and exit"
-    echo "  --version                   Print the version of $TOOL_NAME and exit"
-    echo
-    echo "TOOL DOCUMENTATION: $TOOL_DOCS"
+    echo -e "
+                        $0
+    v. $SCRIPT_VERSION by $SCRIPT_AUTHOR, $REPO_URL
+            =================================================
+
+DESCRIPTION:
+$DESCRIPTION
+
+USAGE / EXAMPLE COMMANDS:
+  - Basic usage example:
+      sbatch $0 -i results/braker/split/braker1.faa -o results/deeptmhmm
+  - Pass extra options to $TOOL_NAME (note the quoting):
+      sbatch $0 -i results/braker/split/braker1.faa -o results/deeptmhmm --more_opts \"--some-opt 'a value'\"
+
+REQUIRED OPTIONS:
+  -i/--infile         <file>  Input protein FASTA file.
+                                NOTE: Can only contain 250 or fewer proteins!
+                                To split a proteome file, use 'seqkit split2 --by-size 250'
+  -o/--outdir         <dir>   Output dir (will be created if needed)
+
+OTHER KEY OPTIONS:
+  --more_opts         <str>   Quoted string with one or more additional options
+                              for $TOOL_NAME
+
+OUTPUT:
+  Alongside the tool's own output, '<outdir>/logs' will contain:
+    command.txt     - The command that was run, plus this script's Git commit
+    versions.txt    - Versions of this script and of $TOOL_NAME
+    shell_env.txt   - The shell environment (credential-like values redacted)
+    conda_env.yml   - The Conda environment (when using Conda)
+    slurm-*.out     - A copy of the Slurm log (when run as a Slurm job)
+
+UTILITY OPTIONS:
+  --env_type          <str>   Software environment: 'conda', 'container'        [default: $env_type]
+                              (Singularity/Apptainer), or 'none' (tool must
+                              already be available in your PATH)
+  --container_url     <str>   URL/URI to download a container from              [default: ${container_url:-none}]
+  --container_dir     <str>   Dir to download a container to                    [default: $container_dir]
+  --container_path    <file>  Local container image file ('.sif') to use        [default: ${container_path:-none}]
+  --conda_path        <dir>   Full path to a Conda environment to use           [default: ${conda_path:-none}]
+  -h/--help                   Print this help message
+  -v/--version                Print script and $TOOL_NAME versions
+
+TOOL DOCUMENTATION:
+  $TOOL_DOCS
+"
 }
 
 # Function to source the script with Bash functions
 source_function_script() {
+    local is_slurm=${1:-false}
+
     # Determine the location of this script, and based on that, the function script
-    if [[ "$IS_SLURM" == true ]]; then
+    if [[ "$is_slurm" == true ]]; then
         script_path=$(scontrol show job "$SLURM_JOB_ID" | awk '/Command=/ {print $1}' | sed 's/Command=//')
         script_dir=$(dirname "$script_path")
         SCRIPT_NAME=$(basename "$script_path")
@@ -81,39 +100,68 @@ source_function_script() {
         script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
         SCRIPT_NAME=$(basename "$0")
     fi
-    function_script=$(realpath "$script_dir"/../dev/"$(basename "$FUNCTION_SCRIPT_URL")")
+    function_script_name="$(basename "$FUNCTION_SCRIPT_URL")"
+    function_script_path="$script_dir"/../dev/"$function_script_name"
+
     # Download the function script if needed, then source it
-    if [[ ! -f "$function_script" ]]; then
-        echo "Can't find script with Bash functions ($function_script), downloading from GitHub..."
-        function_script=$(basename "$FUNCTION_SCRIPT_URL")
-        wget -q "$FUNCTION_SCRIPT_URL" -O "$function_script"
+    if [[ -s "$function_script_path" ]]; then
+        source "$function_script_path"
+    else
+        if [[ ! -s "$function_script_name" ]]; then
+            echo "Can't find script with Bash functions ($function_script_name), downloading from GitHub..."
+            # Download to a temp file, then move into place, so that concurrent
+            # jobs can never source a half-written file
+            tmp_script=$(mktemp "$function_script_name".XXXXXX)
+            if ! wget -q "$FUNCTION_SCRIPT_URL" -O "$tmp_script"; then
+                rm -f "$tmp_script"
+                echo "ERROR: Failed to download $FUNCTION_SCRIPT_URL" >&2
+                exit 1
+            fi
+            mv -f "$tmp_script" "$function_script_name"
+        fi
+        source "$function_script_name"
     fi
-    source "$function_script"
+
+    # Make sure the functions were really loaded
+    if ! declare -F log_time check_val >/dev/null; then
+        echo "ERROR: Sourced $function_script_name but its functions are missing" >&2
+        echo "       (an outdated copy may be cached - try deleting it)" >&2
+        exit 1
+    fi
 }
 
 # Check if this is a SLURM job, then load the Bash functions
-if [[ -z "$SLURM_JOB_ID" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
-source_function_script
+if [[ -z "${SLURM_JOB_ID:-}" ]]; then IS_SLURM=false; else IS_SLURM=true; fi
+source_function_script "$IS_SLURM"
+
+# Report clearly if this script exits with a non-zero status
+trap report_on_exit EXIT
 
 # ==============================================================================
 #                          PARSE COMMAND-LINE ARGS
 # ==============================================================================
 # Initiate variables
+version_only=false  # When true, just print tool & script version info and exit
 infile=
 outdir=
+more_opts=
+threads=
 
-# Parse command-line args
+# Parse command-line options
 all_opts="$*"
-while [ "$1" != "" ]; do
+all_opts_q=$(printf '%q ' "$@")   # Shell-quoted, so it can be re-run exactly
+while [[ $# -gt 0 ]]; do
     case "$1" in
-        -i | --infile )     shift && infile=$1 ;;
-        -o | --outdir )     shift && outdir=$1 ;;
-        --env_type )             shift && env_type=$1 ;;
-        --dl_container )    dl_container=true ;;
-        --container_dir )   shift && container_dir=$1 ;;
-        --container_url )   shift && container_url=$1 && dl_container=true ;;
+        -i | --infile )     check_val "$1" "${2:-}"; shift; infile=$1 ;;
+        -o | --outdir )     check_val "$1" "${2:-}"; shift; outdir=$1 ;;
+        --more_opts )       check_val "$1" "${2:-}" lax; shift; more_opts=$1 ;;
+        --env_type )        check_val "$1" "${2:-}"; shift; env_type=$1 ;;
+        --conda_path )      check_val "$1" "${2:-}"; shift; conda_path=$1 ;;
+        --container_dir )   check_val "$1" "${2:-}"; shift; container_dir=$1 ;;
+        --container_url )   check_val "$1" "${2:-}"; shift; container_url=$1 ;;
+        --container_path )  check_val "$1" "${2:-}"; shift; container_path=$1 ;;
         -h | --help )       script_help; exit 0 ;;
-        -v | --version )         version_only=true ;;
+        -v | --version)     version_only=true ;;
         * )                 die "Invalid option $1" "$all_opts" ;;
     esac
     shift
@@ -122,22 +170,37 @@ done
 # ==============================================================================
 #                          INFRASTRUCTURE SETUP
 # ==============================================================================
-# Strict Bash settings
-set -euo pipefail
+# Check software env
+[[ -z "$TOOL_BINARY" ]] && die "TOOL_BINARY has not been set in this script"
+[[ "$env_type" == "conda" && -z "$conda_path" ]] &&
+    die "No Conda env: set 'conda_path' in this script or use --conda_path" "$all_opts"
+[[ "$env_type" == "container" && -z "$container_url" && -z "$container_path" ]] &&
+    die "No container: set 'container_url' in this script or use --container_url/--container_path" "$all_opts"
 
-# Load software
-load_env "$conda_path" "$container_path" "$dl_container"
-[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
+# Print version info and exit, if requested (this needs the software env loaded)
+if [[ "$version_only" == true ]]; then
+    load_env
+    print_version "$VERSION_COMMAND"
+    exit 0
+fi
 
 # Check options provided to the script
 [[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
 [[ -z "$outdir" ]] && die "No output dir specified, do so with -o/--outdir" "$all_opts"
 [[ ! -f "$infile" ]] && die "Input file $infile does not exist"
 
+# Warn if the output dir already holds results from a previous run
+check_outdir "$outdir"
+
 # Define outputs based on script parameters
-[[ ! "$outdir" =~ ^/ ]] && outdir="$PWD"/"$outdir"
-LOG_DIR="$outdir"/logs && mkdir -p "$LOG_DIR"
+# NOTE: The script cd's into the output dir to run the tool, so the paths are made absolute
 infile=$(realpath "$infile")
+outdir=$(realpath -m "$outdir")
+LOG_DIR="$outdir"/logs
+mkdir -p "$LOG_DIR"
+
+# Record how this script was called (and, under Slurm, which job ran it)
+log_provenance "$LOG_DIR"
 
 # ==============================================================================
 #                         REPORT PARSED OPTIONS
@@ -145,8 +208,12 @@ infile=$(realpath "$infile")
 log_time "Starting script $SCRIPT_NAME, version $SCRIPT_VERSION"
 echo "=========================================================================="
 echo "All options passed to this script:        $all_opts"
+echo "Working directory:                        $PWD"
+echo
 echo "Input file:                               $infile"
 echo "Output dir:                               $outdir"
+echo "Temp dir (\$TMPDIR):                       ${TMPDIR:-<unset>}"
+[[ -n $more_opts ]] && echo "Additional options for $TOOL_NAME:        $more_opts"
 log_time "Listing the input file(s):"
 ls -lh "$infile"
 set_threads "$IS_SLURM"
@@ -155,15 +222,23 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-cd "$outdir" || exit
+# Load the software environment
+load_env
 
+# Run the tool (it writes to 'biolib_results' in the working dir)
+cd "$outdir"
 log_time "Running $TOOL_NAME..."
-runstats $TOOL_BINARY \
-    --fasta "$infile"
+eval runstats "$TOOL_BINARY" \
+    --fasta "$(printf '%q' "$infile")" \
+    $more_opts
 
 log_time "Moving the output files..."
 mv -v biolib_results/* .
 
+# ==============================================================================
+#                               WRAP-UP
+# ==============================================================================
 log_time "Listing files in the output dir:"
-ls -lh
-final_reporting "$LOG_DIR"
+ls -lhd "$outdir"/* 2>/dev/null ||
+    log_time "WARNING: No files found in the output dir $outdir"
+final_reporting

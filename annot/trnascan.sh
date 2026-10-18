@@ -73,6 +73,7 @@ OTHER KEY OPTIONS:
 OUTPUT:
   <outdir>/<id>.out / .ss / .bed / .gff / .fa / .stats - raw predictions
   <outdir>/hc/<id>.out        - high-confidence set (EukHighConfidenceFilter)
+  <outdir>/hc/<id>.hc.gff3    - high-confidence set as GFF3 (features + exons)
 
   Alongside the tool's own output, '<outdir>/logs' will contain:
     command.txt     - The command that was run, plus this script's Git commit
@@ -190,9 +191,12 @@ done
 [[ "$env_type" == "container" && -z "$container_url" && -z "$container_path" ]] &&
     die "No container: set 'container_url' in this script or use --container_url/--container_path" "$all_opts"
 
-# Load software
-load_env   # Note: reads the env_type/conda_path/container_* globals, takes no args
-[[ "$version_only" == true ]] && print_version "$VERSION_COMMAND" && exit 0
+# Print version info and exit, if requested (this needs the software env loaded)
+if [[ "$version_only" == true ]]; then
+    load_env
+    print_version "$VERSION_COMMAND"
+    exit 0
+fi
 
 # Check options provided to the script
 [[ -z "$infile" ]] && die "No input file specified, do so with -i/--infile" "$all_opts"
@@ -203,7 +207,9 @@ load_env   # Note: reads the env_type/conda_path/container_* globals, takes no a
 check_outdir "$outdir"
 
 # Define outputs based on script parameters
-LOG_DIR="$outdir"/logs
+# NOTE: LOG_DIR is made absolute so that log paths keep resolving if the
+#       script (or the tool) changes the working dir later on
+LOG_DIR=$(realpath -m "$outdir")/logs
 mkdir -p "$LOG_DIR"
 file_id=$(basename "$infile" | sed -E 's/\.(fa|fasta|fna)(\.gz)?$//')
 out_txt="$outdir"/"$file_id".out
@@ -238,6 +244,7 @@ echo "Working directory:                        $PWD"
 echo
 echo "Input file:                               $infile"
 echo "Output dir:                               $outdir"
+echo "Temp dir (\$TMPDIR):                       ${TMPDIR:-<unset>}"
 echo "Search mode:                              $mode_opt"
 [[ -n $detail_opts ]] && echo "Detailed-output options:                  $detail_opts"
 echo "Run EukHighConfidenceFilter:              $hc_filter"
@@ -250,6 +257,9 @@ set_threads "$IS_SLURM"
 # ==============================================================================
 #                               RUN
 # ==============================================================================
+# Load the software environment
+load_env
+
 # NOTE: tRNAscan-SE refuses to overwrite its output files, so remove any from
 #       a previous run in this dir first
 rm -f "$out_txt" "$out_ss" "$out_stats" "$out_bed" "$out_gff" "$out_fa"
@@ -275,6 +285,58 @@ if [[ "$hc_filter" == true && "$mode" == "E" ]]; then
     mkdir -p "$hc_dir"
     runstats ${CONTAINER_PREFIX:-} EukHighConfidenceFilter \
         -i "$out_txt" -s "$out_ss" -o "$hc_dir" -p "$file_id"
+
+    # EukHighConfidenceFilter writes only .out and .ss, no GFF, so recover the
+    # high-confidence subset from the full GFF. The filtered .out keeps every
+    # prediction and marks the surviving ones in its last column. The GFF ID is
+    # the sequence name + ".trna" + the tRNA number, which are columns 1 and 2
+    # of the .out (space-padded to a fixed width). Both the feature line and its
+    # exon children are kept, so tRNAs with an intron come through whole.
+    # NOTE: no apostrophes in this awk program, they would end the shell string
+    log_time "Extracting the high-confidence tRNAs from the GFF..."
+    hc_gff="$hc_dir"/"$file_id".hc.gff3
+    awk -v label="high confidence set" '
+        # Return the value of attribute "key" in a GFF column-9 string, or ""
+        function attr(s, key,   re, v) {
+            re = "(^|;)" key "=[^;]*"
+            if (match(s, re)) {
+                v = substr(s, RSTART, RLENGTH)
+                sub("(^|;)" key "=", "", v)
+                return v
+            }
+            return ""
+        }
+
+        BEGIN { FS = "\t"; OFS = "\t" }
+
+        # Pass 1: the high-confidence IDs, from the filtered .out (3 header lines)
+        FNR == NR {
+            if (FNR <= 3) next
+            if ($NF != label) next
+            gsub(/ /, "", $1)
+            gsub(/ /, "", $2)
+            keep[$1 ".trna" $2] = 1
+            n_hc++
+            next
+        }
+
+        # Pass 2: the GFF, keeping each high-confidence feature and its exons
+        /^##gff-version/ { print; next }
+        /^#/ { next }
+        {
+            id = attr($9, "ID")
+            par = attr($9, "Parent")
+            sub(/,.*/, "", par)    # a Parent can list several comma-separated IDs
+            if (id in keep || par in keep) print
+        }
+
+        END {
+            if (n_hc == 0) {
+                print "ERROR: no rows marked \"" label "\" in " ARGV[1] > "/dev/stderr"
+                exit 1
+            }
+        }
+    ' "$hc_dir"/"$file_id".out "$out_gff" > "$hc_gff"
 elif [[ "$hc_filter" == true ]]; then
     log_time "NOTE: skipping EukHighConfidenceFilter - it only applies to eukaryotic mode (-E)"
 fi
